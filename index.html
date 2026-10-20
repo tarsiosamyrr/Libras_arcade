@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIBRAS ARCADE — Jogo de Datilologia por Gestos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="https://storage.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ===== TELA DE CARREGAMENTO ===== -->
+  <div id="boot-screen" class="boot-screen">
+
+    <!-- Estado 1: nada pesado foi baixado ainda — só depois deste clique -->
+    <div class="boot-gate" id="boot-gate">
+      <span class="boot-gate-icon">🤟</span>
+      <h1 class="boot-gate-title">LIBRAS ARCADE</h1>
+      <p class="boot-gate-desc">
+        Este app usa sua câmera e baixa um modelo de reconhecimento de mãos
+        (alguns MB) — isso só começa a acontecer depois que você clicar em
+        "Começar", pra não pesar em quem só está dando uma olhada.
+      </p>
+      <button class="chip-btn boot-gate-btn" id="boot-start-btn" type="button">▶ COMEÇAR</button>
+    </div>
+
+    <!-- Estado 2: carregando (só aparece depois do clique acima) -->
+    <div class="boot-core hidden" id="boot-core">
+      <svg viewBox="0 0 200 200" class="boot-ring">
+        <circle cx="100" cy="100" r="90" class="ring-track"/>
+        <circle cx="100" cy="100" r="90" class="ring-progress" id="boot-ring-progress"/>
+      </svg>
+      <div class="boot-label">
+        <span class="boot-status" id="boot-status">INICIALIZANDO</span>
+        <span class="boot-percent" id="boot-percent">0%</span>
+      </div>
+    </div>
+    <p class="boot-log hidden" id="boot-log">Carregando runtime de visão computacional…</p>
+  </div>
+
+  <!-- ===== CENA PRINCIPAL ===== -->
+  <div id="stage" class="stage hidden">
+
+    <video id="webcam" class="webcam" autoplay playsinline muted></video>
+    <canvas id="overlay" class="overlay"></canvas>
+    <div class="vignette"></div>
+    <div class="scanlines"></div>
+
+    <!-- ===== BARRA SUPERIOR ===== -->
+    <header class="topbar">
+      <div class="topbar-block">
+        <span class="dot dot--online"></span>
+        <span class="mono">SISTEMA ONLINE</span>
+      </div>
+      <div class="topbar-title">
+        <span class="brand">LIBRAS·ARCADE</span>
+        <span class="brand-sub">DATILOLOGIA POR GESTOS</span>
+      </div>
+      <div class="scoreboard mono">
+        <span class="player-tag">JOGADOR <b id="hud-player">—</b></span>
+        <span>PONTOS <b id="hud-score">0</b></span>
+        <span class="streak">SEQ <b id="hud-streak">0</b></span>
+        <span>RECORDE <b id="hud-best">0</b></span>
+      </div>
+    </header>
+
+    <!-- ===== BARRA INFERIOR ===== -->
+    <footer class="bottombar">
+      <div class="telemetry">
+        <span class="mono">MÃOS: <b id="tel-hands">0</b></span>
+        <span class="mono">FPS: <b id="tel-fps">0</b></span>
+      </div>
+      <div class="hint" id="hint-text">Mostre a mão e forme o sinal indicado</div>
+      <div class="actions">
+        <button id="help-btn" class="chip-btn" type="button">📖 GUIA DO ALFABETO</button>
+        <button id="exit-btn" class="chip-btn hidden" type="button">🚪 SAIR</button>
+      </div>
+    </footer>
+
+    <!-- ===== MENU INICIAL / SELEÇÃO DE MODO ===== -->
+    <div class="home" id="home">
+      <div class="home-title">
+        <h1>LIBRAS ARCADE</h1>
+        <p>Aprenda o alfabeto manual da Libras interagindo só com as mãos</p>
+      </div>
+
+      <div class="home-actions">
+        <button class="chip-btn" id="home-guide-btn" type="button">📖 APRENDER LIBRAS</button>
+        <button class="chip-btn" id="home-rankings-btn" type="button">🏆 PONTUAÇÕES</button>
+      </div>
+
+      <div class="mode-grid" id="mode-grid">
+
+        <!-- MODO TREINO -->
+        <div class="mode-card" data-mode="practice" data-id="mode-practice" tabindex="0">
+          <div class="mode-screen">
+            <span class="icon">🔤</span>
+            <div class="mode-screen-scan"></div>
+          </div>
+          <div class="mode-body">
+            <h3>MODO TREINO</h3>
+            <p>Sinalize a letra mostrada na tela o mais rápido possível. Ótimo para aprender uma letra de cada vez.</p>
+            <div class="mode-tags mono"><span>DATILOLOGIA</span><span>1 LETRA</span></div>
+          </div>
+          <div class="level-pick" data-for="practice">
+            <span class="level-dot mono is-active" data-level="1">1</span>
+            <span class="level-dot mono" data-level="2">2</span>
+            <span class="level-dot mono" data-level="3">3</span>
+          </div>
+        </div>
+
+        <!-- MODO SOLETRAR -->
+        <div class="mode-card" data-mode="word" data-id="mode-word" tabindex="0">
+          <div class="mode-screen">
+            <span class="icon">🧩</span>
+            <div class="mode-screen-scan"></div>
+          </div>
+          <div class="mode-body">
+            <h3>MODO SOLETRAR</h3>
+            <p>Soletre palavras inteiras, letra por letra, contra o cronômetro. Ganha bônus ao completar a palavra.</p>
+            <div class="mode-tags mono"><span>PALAVRAS</span><span>CRONÔMETRO</span></div>
+          </div>
+          <div class="level-pick" data-for="word">
+            <span class="level-dot mono is-active" data-level="1">1</span>
+            <span class="level-dot mono" data-level="2">2</span>
+            <span class="level-dot mono" data-level="3">3</span>
+          </div>
+        </div>
+
+        <!-- MODO FORCA -->
+        <div class="mode-card" data-mode="forca" data-id="mode-forca" tabindex="0">
+          <div class="mode-screen">
+            <span class="icon">🪢</span>
+            <div class="mode-screen-scan"></div>
+            <span class="mode-badge mono is-new">NOVO</span>
+          </div>
+          <div class="mode-body">
+            <h3>MODO FORCA</h3>
+            <p>Adivinhe a palavra secreta sinalizando letras, uma a uma. Errou demais? A forca se completa — mas o jogo continua na próxima palavra.</p>
+            <div class="mode-tags mono"><span>VOCABULÁRIO</span><span>SEM CRONÔMETRO</span></div>
+          </div>
+          <div class="level-pick" data-for="forca">
+            <span class="level-dot mono is-active" data-level="1">1</span>
+            <span class="level-dot mono" data-level="2">2</span>
+            <span class="level-dot mono" data-level="3">3</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="hint mono" style="max-width:520px">
+        Aponte com o dedo indicador e feche a pinça (👌) para escolher um cartão — ou use o mouse/toque.
+      </div>
+    </div>
+
+    <!-- ===== TELA DE JOGO (treino / palavra) ===== -->
+    <section class="play" id="play">
+      <div class="target-card" id="target-card">
+        <span class="mono target-eyebrow" id="target-eyebrow">SINALIZE A LETRA</span>
+
+        <!-- modo treino: uma letra grande -->
+        <div class="target-letter hidden" id="target-letter">A</div>
+        <!-- modo palavra: letras em sequência -->
+        <div class="target-word hidden" id="target-word"></div>
+
+        <div class="schematic-hand" id="schematic-hand"></div>
+        <p class="target-tip" id="target-tip">—</p>
+
+        <div class="hold-ring-wrap">
+          <svg viewBox="0 0 64 64" class="hold-ring">
+            <circle cx="32" cy="32" r="28" class="hold-track"/>
+            <circle cx="32" cy="32" r="28" class="hold-fill" id="hold-fill"/>
+          </svg>
+          <span class="hold-label mono" id="hold-label">—</span>
+        </div>
+
+        <div class="timer-bar-wrap"><div class="timer-bar-fill" id="timer-fill"></div></div>
+      </div>
+    </section>
+
+    <!-- ===== TELA DE JOGO (forca) ===== -->
+    <section class="play" id="forca-play">
+      <div class="target-card forca-card" id="forca-card">
+        <span class="mono target-eyebrow" id="forca-eyebrow">ADIVINHE A PALAVRA</span>
+        <p class="forca-hint mono" id="forca-hint">💡 —</p>
+
+        <div class="forca-scene">
+          <svg viewBox="0 0 160 180" class="forca-gallows" xmlns="http://www.w3.org/2000/svg">
+            <!-- forca (sempre visível durante a rodada) -->
+            <line x1="18" y1="170" x2="120" y2="170" class="forca-gallows-part"/>
+            <line x1="45" y1="170" x2="45" y2="18" class="forca-gallows-part"/>
+            <line x1="45" y1="18" x2="112" y2="18" class="forca-gallows-part"/>
+            <line x1="112" y1="18" x2="112" y2="38" class="forca-gallows-part"/>
+            <!-- boneco: revelado uma parte por erro (até 6) -->
+            <circle cx="112" cy="50" r="12" class="forca-figure" data-step="1"/>
+            <line x1="112" y1="62" x2="112" y2="106" class="forca-figure" data-step="2"/>
+            <line x1="112" y1="76" x2="94" y2="92" class="forca-figure" data-step="3"/>
+            <line x1="112" y1="76" x2="130" y2="92" class="forca-figure" data-step="4"/>
+            <line x1="112" y1="106" x2="96" y2="136" class="forca-figure" data-step="5"/>
+            <line x1="112" y1="106" x2="128" y2="136" class="forca-figure" data-step="6"/>
+          </svg>
+          <div class="forca-errors mono">ERROS <b id="forca-errors-count">0</b>/6</div>
+        </div>
+
+        <div class="forca-word mono" id="forca-word"></div>
+
+        <p class="target-tip" id="forca-tip">Sinalize uma letra e segure para tentar adivinhar a palavra</p>
+
+        <div class="hold-ring-wrap">
+          <svg viewBox="0 0 64 64" class="hold-ring">
+            <circle cx="32" cy="32" r="28" class="hold-track"/>
+            <circle cx="32" cy="32" r="28" class="hold-fill" id="forca-hold-fill"/>
+          </svg>
+          <span class="hold-label mono" id="forca-hold-label">—</span>
+        </div>
+
+        <div class="forca-keyboard mono" id="forca-keyboard"></div>
+      </div>
+    </section>
+
+    <!-- ===== FEEDBACK (acerto/erro) ===== -->
+    <div class="feedback-toast mono" id="feedback-toast"></div>
+
+    <!-- ===== CURSOR (ponta do indicador, fallback de navegação) ===== -->
+    <div class="cursor" id="cursor">
+      <div class="cursor-ring"></div>
+      <div class="cursor-dot"></div>
+    </div>
+
+    <!-- ===== GUIA DE REFERÊNCIA DO ALFABETO ===== -->
+    <div class="reference" id="reference">
+      <div class="reference-card">
+        <h3>APRENDA AS LETRAS EM LIBRAS</h3>
+        <p class="disclaimer">
+          Estes são diagramas <b>esquemáticos</b> (dedo estendido/fechado) gerados pelo próprio
+          classificador do jogo — não são a referência oficial da Libras. Para aprender o sinal
+          correto com precisão, consulte materiais oficiais como o
+          <b>VLibras</b> ou o <b>INES</b> (Instituto Nacional de Educação de Surdos).
+        </p>
+        <div class="reference-groups" id="reference-grid"></div>
+        <div class="reference-close mono" id="reference-close">FECHAR (clique ou tecla Esc)</div>
+      </div>
+    </div>
+
+    <!-- ===== RESULTADO DA SESSÃO ===== -->
+    <div class="results" id="results">
+      <div class="results-card">
+        <h2 class="mono">🎉 FIM DE JOGO!</h2>
+        <p class="results-meta mono">
+          JOGADOR <b id="results-player">—</b> · JOGO <b id="results-game">—</b>
+        </p>
+        <div class="results-score" id="results-score">0</div>
+        <div class="results-stats mono">
+          <div><span id="results-label-1">MELHOR SEQUÊNCIA</span><b id="results-streak">0</b></div>
+          <div><span id="results-label-2">RODADAS</span><b id="results-rounds">0</b></div>
+          <div>RECORDE<b id="results-best">0</b></div>
+        </div>
+        <div class="results-actions">
+          <button class="chip-btn" id="results-restart" type="button">JOGAR NOVAMENTE</button>
+          <button class="chip-btn" id="results-rankings" type="button">🏆 VER PONTUAÇÕES</button>
+          <button class="chip-btn" id="results-home" type="button">VOLTAR PARA O INÍCIO</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== IDENTIFICAÇÃO DO JOGADOR ===== -->
+    <div class="player-modal" id="player-modal">
+      <div class="player-modal-card">
+        <h3 class="mono">QUEM VAI JOGAR?</h3>
+        <label class="player-modal-label mono" for="player-name-input">DIGITE SEU NOME</label>
+        <input class="player-modal-input mono" id="player-name-input" type="text" maxlength="24" placeholder="Seu nome" autocomplete="off">
+        <button class="chip-btn" id="player-modal-start" type="button">COMEÇAR</button>
+      </div>
+    </div>
+
+    <!-- ===== PONTUAÇÕES / RANKING ===== -->
+    <div class="rankings" id="rankings">
+      <div class="rankings-card">
+        <h3 class="mono">🏆 PONTUAÇÕES</h3>
+        <div class="rankings-tabs mono" id="rankings-tabs"></div>
+        <div class="rankings-table-wrap">
+          <table class="rankings-table mono" id="rankings-table">
+            <thead>
+              <tr><th>JOGADOR</th><th>PONTUAÇÃO</th><th>DATA</th></tr>
+            </thead>
+            <tbody id="rankings-tbody"></tbody>
+          </table>
+          <p class="rankings-empty mono" id="rankings-empty">Ninguém jogou este modo ainda.</p>
+        </div>
+        <div class="rankings-close mono" id="rankings-close">FECHAR (clique ou tecla Esc)</div>
+      </div>
+    </div>
+
+    <!-- ===== STATUS DAS DUAS MÃOS (esquerda=forma/posição, direita=letra) === -->
+    <div class="hands-status" id="hands-status">
+      <div class="hand-status">
+        <span class="hand-status-role mono">MÃO ESQUERDA</span>
+        <span class="hand-status-desc">Forma/posição (referência)</span>
+        <span class="hand-status-state mono" id="hand-left-state">—</span>
+      </div>
+      <div class="hand-status">
+        <span class="hand-status-role mono">MÃO DIREITA</span>
+        <span class="hand-status-desc">Letra em Libras</span>
+        <span class="hand-status-state mono" id="hand-right-state">—</span>
+      </div>
+      <div class="hand-status-letter mono">
+        LETRA DETECTADA: <b id="hand-detected-letter">—</b><span id="hand-detected-confidence"></span>
+      </div>
+      <div class="hand-status-gate mono" id="hand-gate-status"></div>
+    </div>
+
+    <!-- ===== PAINEL DE DIAGNÓSTICO ===== -->
+    <div class="diag" id="diag">
+      <div class="mono diag-title">DIAGNÓSTICO — CLASSIFICADOR DE SINAIS</div>
+      <pre class="mono diag-json" id="diag-json">{}</pre>
+    </div>
+
+  </div>
+
+  <!-- ===== ERRO DE CÂMERA ===== -->
+  <div id="error-screen" class="error-screen hidden">
+    <h2>FALHA AO INICIAR CÂMERA</h2>
+    <p id="error-message">—</p>
+    <p class="mono">Verifique se a página está em http://localhost (ou https) e se a permissão de câmera foi concedida.</p>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

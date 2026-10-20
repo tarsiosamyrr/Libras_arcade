@@ -1,0 +1,370 @@
+/* ==========================================================================
+   LIBRAS ARCADE — Tema visual
+   Mesma paleta/filosofia do projeto irmão J.A.R.V.I.S. HUD:
+   fundo escuro, vidro (glassmorphism), ciano/teal, tipografia Rajdhani +
+   Share Tech Mono. Aqui usamos verde para "acerto" e âmbar/vermelho para
+   "erro", além de componentes específicos de jogo (cartão de letra,
+   barra de progresso do hold, anel de tempo, placar).
+
+   ATUALIZAÇÃO: o menu inicial (.mode-card) foi redesenhado em formato de
+   "cartucho de arcade" (tela + corpo + rodapé) — mesma ideia visual usada
+   no protótipo de central de módulos, só que aplicada aos 3 modos que já
+   vivem dentro deste app (Treino / Soletrar / Forca), sem exigir nenhuma
+   mudança de estrutura no game.js/forca.js/ui.js: continuam sendo
+   `.mode-card` com `data-mode`, `.level-pick` e `.level-dot` normais.
+   ========================================================================== */
+
+:root{
+  --bg: #05080c;
+  --glass: rgba(9, 20, 28, .55);
+  --glass-strong: rgba(6, 14, 20, .85);
+  --cyan: #4bd8ff;
+  --cyan-dim: rgba(75, 216, 255, .35);
+  --teal: #29f5c8;
+  --amber: #ffb13c;
+  --green: #35ffa0;
+  --red: #ff5c72;
+  --text: #e8f6ff;
+  --text-dim: #6e93a8;
+  --line: rgba(75, 216, 255, .28);
+  --radius: 2px;
+}
+
+*{ box-sizing: border-box; }
+html, body{
+  margin:0; padding:0; width:100%; height:100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+.mono{ font-family: 'Share Tech Mono', monospace; letter-spacing: .04em; }
+.hidden{ display: none !important; }
+button{ font-family: inherit; cursor: pointer; }
+
+/* ---------------------------------------------------------------- BOOT --- */
+.boot-screen{
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px;
+  background: radial-gradient(circle at 50% 40%, rgba(75,216,255,.08), transparent 60%), var(--bg);
+}
+.boot-core{ position: relative; width: 200px; height: 200px; }
+.boot-ring{ width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-track{ fill:none; stroke: rgba(75,216,255,.12); stroke-width: 3; }
+.ring-progress{
+  fill:none; stroke: var(--cyan); stroke-width: 3; stroke-linecap: round;
+  stroke-dasharray: 565.48; stroke-dashoffset: 565.48;
+  filter: drop-shadow(0 0 6px var(--cyan));
+  transition: stroke-dashoffset .25s ease;
+}
+.boot-label{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; }
+.boot-status{ font-family:'Share Tech Mono',monospace; font-size:12px; color: var(--text-dim); letter-spacing:.12em; }
+.boot-percent{ font-size: 34px; font-weight: 600; color: var(--cyan); text-shadow: 0 0 12px var(--cyan-dim); }
+.boot-log{ font-family:'Share Tech Mono',monospace; font-size: 12px; color: var(--text-dim); }
+
+/* --------------------------------------------------------------- STAGE --- */
+.stage{ position: fixed; inset: 0; overflow: hidden; }
+.webcam{
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  transform: scaleX(-1);
+  filter: saturate(.75) brightness(.5) contrast(1.05);
+}
+.overlay{ position: absolute; inset: 0; width: 100%; height: 100%; }
+.vignette{ position: absolute; inset: 0; pointer-events:none; background: radial-gradient(circle at 50% 50%, transparent 40%, rgba(0,0,0,.78) 100%); }
+.scanlines{ position:absolute; inset:0; pointer-events:none; opacity:.06; background: repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 2px, transparent 4px); }
+
+/* --------------------------------------------------------------- BARS --- */
+.topbar, .bottombar{ 
+  position:absolute; left:0; right:0; z-index: 10; 
+  display:flex; align-items:center; justify-content:space-between; 
+  padding: 16px 26px; 
+  pointer-events: none;
+}
+.topbar *, .bottombar *{ 
+  pointer-events: auto; 
+}
+.topbar{ top:0; } .bottombar{ bottom:0; }
+.topbar-block{ display:flex; align-items:center; gap:14px; font-size:12px; color:var(--text-dim); }
+.topbar-title{ display:flex; flex-direction:column; align-items:center; }
+.brand{ font-size: 19px; font-weight:700; letter-spacing:.22em; color: var(--text); }
+.brand-sub{ font-size: 10px; letter-spacing:.28em; color: var(--text-dim); margin-top:2px; }
+.dot{ width:7px; height:7px; border-radius:50%; display:inline-block; }
+.dot--online{ background: var(--teal); box-shadow: 0 0 8px var(--teal); animation: pulse 2s infinite; }
+@keyframes pulse{ 0%,100%{ opacity:1;} 50%{ opacity:.35;} }
+
+.scoreboard{ display:flex; gap:16px; align-items:center; font-size:12px; color: var(--text-dim); }
+.scoreboard b{ color: var(--cyan); font-weight:600; }
+.scoreboard .streak b{ color: var(--amber); }
+.chip-btn{
+  background: var(--glass); border:1px solid var(--line); color: var(--cyan);
+  padding: 7px 14px; font-size:11px; letter-spacing:.1em; border-radius: var(--radius);
+  pointer-events:auto;
+}
+.chip-btn:hover{ background: rgba(75,216,255,.12); }
+/* estado de "mira" quando o cursor de gesto (ponta do indicador) está em
+   cima do botão — mesma linguagem visual do hover dos cartões do menu
+   (.mode-card.is-hover), só que aplicada a um chip-btn qualquer */
+.chip-btn.is-hover{ border-color: var(--cyan); background: rgba(75,216,255,.16); box-shadow: 0 0 14px var(--cyan-dim); }
+/* botão SAIR um pouco maior que os demais chips — é a ação mais importante
+   da tela de jogo (a única forma de voltar ao menu), então merece um alvo
+   maior tanto pro dedo (gesto) quanto pro dedo (toque/clique) */
+#exit-btn{ font-size: 13px; padding: 10px 20px; }
+.hint{ font-size:13px; color: var(--text-dim); text-align:center; flex:1; }
+.telemetry{ display:flex; gap:16px; font-size:11px; color: var(--text-dim); }
+.telemetry b{ color: var(--cyan); font-weight:400; }
+/* BUGFIX: os botões de ação (guia do alfabeto / sair) viviam dentro de um
+   segundo `.telemetry`, junto com os contadores de debug (mãos/FPS). Como
+   `.telemetry{display:none}` no mobile existe pra esconder só o debug, isso
+   também apagava — e tornava INCLICÁVEL — o botão SAIR em qualquer tela
+   ≤720px (a maioria dos celulares). Agora os botões vivem num container
+   próprio (`.actions`), com o mesmo visual, mas que nunca é escondido. */
+.actions{ display:flex; gap:16px; align-items:center; }
+
+/* ---------------------------------------------------------- HOME MENU --- */
+.home{
+  position:absolute; inset:0; z-index: 6; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap: 34px;
+  padding: 90px 24px;
+}
+.home-title{ text-align:center; }
+.home-title h1{ margin:0; font-size: 40px; letter-spacing:.18em; color: var(--text); text-shadow: 0 0 20px var(--cyan-dim); }
+.home-title p{ margin:8px 0 0; color: var(--text-dim); font-size:14px; letter-spacing:.06em; }
+
+.mode-grid{ display:flex; gap: 22px; flex-wrap: wrap; justify-content:center; max-width: 940px; pointer-events:auto; }
+
+/* cada cartão vira um "cartucho": tela (glyph) + corpo (texto) + seletor
+   de nível — mesma classe/atributos de sempre, só reorganizados visualmente */
+.mode-card{
+  width: 250px;
+  display:flex; flex-direction:column;
+  border-radius: var(--radius);
+  border:1px solid var(--line); background: var(--glass);
+  overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+}
+.mode-card.is-hover{ transform: translateY(-4px); border-color: var(--cyan); box-shadow: 0 8px 30px var(--cyan-dim); background: rgba(75,216,255,.08); }
+.mode-card:focus-visible{ outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+.mode-screen{
+  position: relative; height: 108px;
+  display:flex; align-items:center; justify-content:center;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(75,216,255,.14), transparent 65%),
+    linear-gradient(180deg, rgba(75,216,255,.05), transparent);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+}
+.mode-screen .icon{ font-size: 42px; filter: drop-shadow(0 0 12px var(--cyan-dim)); }
+.mode-screen-scan{
+  position:absolute; inset:0; pointer-events:none; opacity:.08;
+  background: repeating-linear-gradient(0deg, #fff 0px, #fff 1px, transparent 2px, transparent 4px);
+}
+.mode-badge{
+  position:absolute; top:8px; right:8px; font-size:9px; letter-spacing:.1em;
+  padding: 3px 7px; border-radius: var(--radius);
+}
+.mode-badge.is-new{ color: var(--amber); border:1px solid rgba(255,177,60,.5); background: rgba(255,177,60,.1); }
+
+.mode-body{ padding: 16px 18px 6px; display:flex; flex-direction:column; gap:8px; flex: 1; }
+.mode-body h3{ margin:0; font-size:15px; letter-spacing:.07em; color: var(--text); }
+.mode-body p{ margin:0; font-size:12px; color: var(--text-dim); line-height:1.5; min-height: 48px; }
+.mode-tags{ display:flex; gap:6px; flex-wrap: wrap; }
+.mode-tags span{ font-size:9px; color: var(--text-dim); border:1px solid var(--line); padding: 3px 6px; border-radius: var(--radius); }
+
+.level-pick{ display:flex; gap:8px; justify-content:center; padding: 12px 16px 16px; border-top: 1px solid var(--line); background: rgba(0,0,0,.16); }
+.level-dot{
+  width:26px; height:26px; border-radius:50%; border:1px solid var(--line); color: var(--text-dim);
+  display:flex; align-items:center; justify-content:center; font-size:11px;
+}
+.level-dot.is-active{ border-color: var(--cyan); color: var(--cyan); box-shadow:0 0 10px var(--cyan-dim); }
+
+/* -------------------------------------------------------------- PLAY --- */
+.play{ position:absolute; inset:0; z-index: 6; display:flex; flex-direction:column; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition: opacity .2s ease; }
+.play.is-open{ opacity:1; pointer-events:auto; }
+
+.target-card{
+  background: var(--glass-strong); border:1px solid var(--line); border-radius: var(--radius);
+  padding: 30px 46px; display:flex; flex-direction:column; align-items:center; gap:14px;
+  box-shadow: 0 0 60px rgba(75,216,255,.1);
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+.target-card.is-correct{ border-color: var(--green); box-shadow: 0 0 60px rgba(53,255,160,.35); }
+.target-card.is-wrong{ border-color: var(--red); box-shadow: 0 0 60px rgba(255,92,114,.35); animation: shake .3s ease; }
+@keyframes shake{ 0%,100%{transform:translateX(0);} 25%{transform:translateX(-6px);} 75%{transform:translateX(6px);} }
+
+.target-eyebrow{ font-size:11px; color: var(--cyan); letter-spacing:.25em; }
+.target-letter{ font-size: 96px; font-weight:700; line-height:1; color: var(--text); text-shadow: 0 0 26px var(--cyan-dim); }
+.target-word{ display:flex; gap:10px; }
+.target-word .wletter{ font-size:52px; font-weight:700; color: var(--text-dim); opacity:.45; }
+.target-word .wletter.is-current{ color: var(--text); opacity:1; text-shadow: 0 0 20px var(--cyan-dim); }
+.target-word .wletter.is-done{ color: var(--teal); opacity:1; }
+.target-tip{ max-width: 340px; text-align:center; font-size:13px; color: var(--text-dim); line-height:1.5; }
+
+.hold-ring-wrap{ position:relative; width:64px; height:64px; }
+.hold-ring{ width:100%; height:100%; transform: rotate(-90deg); }
+.hold-track{ fill:none; stroke: rgba(75,216,255,.15); stroke-width:4; }
+.hold-fill{ fill:none; stroke: var(--teal); stroke-width:4; stroke-linecap:round; stroke-dasharray:175.9; stroke-dashoffset:175.9; transition: stroke-dashoffset .05s linear; }
+.hold-label{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:11px; color: var(--text-dim); }
+
+.timer-bar-wrap{ width: 320px; height:6px; background: rgba(75,216,255,.12); border-radius:3px; overflow:hidden; }
+.timer-bar-fill{ height:100%; background: linear-gradient(90deg, var(--teal), var(--cyan)); transition: width .1s linear; }
+.timer-bar-fill.is-low{ background: linear-gradient(90deg, var(--amber), var(--red)); }
+
+.schematic-hand{ display:flex; gap:6px; align-items:flex-end; height: 56px; margin-top: 4px; }
+.schematic-hand .finger{ width:9px; border-radius:5px; background: rgba(75,216,255,.18); transition: background .15s ease, height .15s ease; }
+.schematic-hand .finger.is-ext{ background: var(--cyan); box-shadow: 0 0 8px var(--cyan-dim); }
+
+.feedback-toast{
+  position:absolute; top: 26%; left:50%; transform: translate(-50%,10px); z-index:9;
+  font-size: 22px; font-weight:700; letter-spacing:.1em; padding: 10px 22px;
+  border-radius: var(--radius); opacity:0; transition: opacity .2s ease, transform .2s ease; pointer-events:none;
+}
+.feedback-toast.is-visible{ opacity:1; transform: translate(-50%,0); }
+.feedback-toast.correct{ color: var(--green); background: rgba(53,255,160,.1); border:1px solid var(--green); }
+.feedback-toast.wrong{ color: var(--red); background: rgba(255,92,114,.1); border:1px solid var(--red); }
+
+/* -------------------------------------------------------------- FORCA --- */
+/* Reaproveita .target-card como base (mesmo cartão de vidro), só adiciona
+   o que é específico do modo: cena da forca, palavra com espaços em branco
+   e o "teclado" de letras já tentadas (substitui a dica única de outros
+   modos, já que aqui não existe uma única letra-alvo por vez). */
+.forca-card{ max-width: 420px; }
+
+.forca-hint{
+  max-width: 360px; text-align:center; font-size:12px; color: var(--text);
+  background: rgba(255,177,60,.08); border:1px solid rgba(255,177,60,.35);
+  border-radius: var(--radius); padding: 8px 14px; line-height:1.5;
+}
+
+.forca-scene{ position: relative; display:flex; flex-direction:column; align-items:center; gap:8px; }
+.forca-gallows{ width: 130px; height: 146px; }
+.forca-gallows-part{
+  fill:none; stroke: var(--cyan); stroke-width: 4; stroke-linecap: round;
+  filter: drop-shadow(0 0 4px var(--cyan-dim));
+}
+.forca-figure{
+  fill:none; stroke: var(--red); stroke-width: 5; stroke-linecap: round;
+  opacity: 0; transform-origin: center;
+  transition: opacity .25s ease;
+  filter: drop-shadow(0 0 6px rgba(255,92,114,.5));
+}
+.forca-figure.is-shown{ opacity: 1; }
+.forca-errors{ font-size: 11px; letter-spacing:.12em; color: var(--text-dim); }
+.forca-errors b{ color: var(--red); font-weight:600; }
+
+.forca-word{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; max-width: 380px; }
+.fletter{
+  width: 30px; height: 40px; display:flex; align-items:flex-end; justify-content:center;
+  padding-bottom: 4px; font-size: 24px; font-weight: 700; color: var(--text);
+  border-bottom: 3px solid var(--line);
+}
+.fletter.is-revealed{ border-color: var(--teal); color: var(--teal); text-shadow: 0 0 10px var(--cyan-dim); }
+
+.forca-keyboard{ display:flex; flex-wrap:wrap; gap:6px; justify-content:center; max-width: 380px; }
+.fkey{
+  width: 24px; height: 24px; display:flex; align-items:center; justify-content:center;
+  font-size: 11px; color: var(--text-dim); border: 1px solid var(--line); border-radius: var(--radius);
+  transition: all .15s ease;
+}
+.fkey.is-hit{ border-color: var(--green); color: var(--green); box-shadow: 0 0 8px rgba(53,255,160,.35); }
+.fkey.is-miss{ border-color: var(--red); color: var(--red); opacity: .5; text-decoration: line-through; }
+
+/* -------------------------------------------------------------- CURSOR --- */
+.cursor{ position:absolute; left:-100px; top:-100px; z-index: 20; width:0; height:0; pointer-events:none; transition: left .04s linear, top .04s linear; }
+.cursor-ring{ position:absolute; left:-16px; top:-16px; width:32px; height:32px; border: 1.5px solid var(--cyan); border-radius:50%; box-shadow: 0 0 10px var(--cyan-dim); transition: transform .12s ease, border-color .12s ease; }
+.cursor.is-pinch .cursor-ring{ transform: scale(.55); border-color: var(--amber); box-shadow:0 0 14px var(--amber); }
+.cursor-dot{ position:absolute; left:-2px; top:-2px; width:4px; height:4px; border-radius:50%; background: var(--cyan); }
+
+/* --------------------------------------------------------- REFERENCE --- */
+.reference{ position:absolute; inset:0; z-index: 8; display:flex; align-items:center; justify-content:center; background: rgba(2,6,10,.85); opacity:0; pointer-events:none; transition: opacity .2s ease; }
+.reference.is-open{ opacity:1; pointer-events:auto; }
+.reference-card{ width: min(760px, 90vw); max-height: 82vh; overflow:auto; background: var(--glass-strong); border:1px solid var(--line); border-radius: var(--radius); padding: 26px 30px; }
+.reference-card h3{ margin:0 0 6px; letter-spacing:.15em; color: var(--cyan); font-size:16px; }
+.reference-card .disclaimer{ font-size:11.5px; color: var(--text-dim); margin-bottom:18px; line-height:1.5; }
+.reference-groups{ display:flex; flex-direction:column; }
+.reference-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap:14px; }
+.ref-item{ border:1px solid var(--line); border-radius: var(--radius); padding: 12px; text-align:center; background: rgba(75,216,255,.04); display:flex; flex-direction:column; align-items:center; gap:8px; }
+.ref-item .letter{ font-size: 26px; font-weight:700; color: var(--text); }
+.ref-item p{ font-size: 11px; color: var(--text-dim); margin: 0; line-height:1.4; }
+.reference-close{ margin-top:18px; text-align:center; font-size:11px; color: var(--text-dim); }
+
+/* diagrama de mão compacto — mesmo componente `.schematic-hand`/`.finger`
+   usado durante a partida, só que menor pra caber no grid do guia */
+.schematic-hand.is-compact{ height: 34px; gap:4px; margin-top:0; }
+.schematic-hand.is-compact .finger{ width:6px; }
+
+/* selo "gesto com movimento" (J, Z) — mesma linguagem visual do selo NOVO
+   do menu inicial (`.mode-badge.is-new`), só que inline dentro do cartão */
+.ref-motion-tag{
+  font-size:9px; letter-spacing:.08em; color: var(--amber);
+  border:1px solid rgba(255,177,60,.5); background: rgba(255,177,60,.1);
+  padding:2px 7px; border-radius: var(--radius);
+}
+
+/* títulos de grupo dentro do guia (sólidas / estáticas / movimento) —
+   mesma linguagem tipográfica do "target-eyebrow" já usado no jogo */
+.reference-group{ margin-top: 22px; }
+.reference-group:first-of-type{ margin-top: 0; }
+.reference-group-title{ font-size:11px; color: var(--cyan); letter-spacing:.2em; margin: 0 0 4px; }
+.reference-group-desc{ font-size:11px; color: var(--text-dim); margin: 0 0 12px; line-height:1.5; }
+
+/* ------------------------------------------------------------ RESULTS --- */
+.results{ position:absolute; inset:0; z-index: 9; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition: opacity .2s ease; }
+.results.is-open{ opacity:1; pointer-events:auto; }
+.results-card{ width: min(460px, 88vw); background: var(--glass-strong); border:1px solid var(--line); border-radius: var(--radius); padding: 30px 34px; text-align:center; }
+.results-card h2{ margin:0 0 4px; letter-spacing:.15em; color: var(--cyan); }
+.results-score{ font-size: 48px; font-weight:700; margin: 14px 0; text-shadow: 0 0 20px var(--cyan-dim); }
+.results-stats{ display:flex; justify-content:space-around; margin: 18px 0; font-size:12px; color: var(--text-dim); }
+.results-stats b{ display:block; font-size:18px; color: var(--text); margin-top:4px; }
+
+/* --------------------------------------------------------------- DIAG --- */
+.diag{ position:absolute; right:20px; top:70px; z-index: 7; width: 300px; max-height: 46vh; overflow:auto; background: var(--glass-strong); border:1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; opacity:0; transform: translateX(12px); pointer-events:none; transition: opacity .2s ease, transform .2s ease; }
+.diag.is-open{ opacity:1; transform: translateX(0); }
+.diag-title{ font-size:10px; color: var(--cyan); letter-spacing:.15em; margin-bottom:8px; }
+.diag-json{ margin:0; font-size:10.5px; color: var(--text-dim); white-space:pre-wrap; word-break: break-all; }
+
+/* --------------------------------------------------- STATUS DAS DUAS MÃOS --- */
+/* Painel sempre visível durante o jogo (diferente do .diag, que é só um
+   toggle de debug) — mostra o papel de cada mão e a letra detectada, como
+   pedido: "Mão esquerda: Forma/posição" / "Mão direita: Letra em Libras" /
+   "Letra detectada: X". Fica do lado oposto ao .diag pra não competir por
+   espaço quando os dois estiverem abertos. */
+.hands-status{
+  position:absolute; left:20px; top:70px; z-index: 7; width: 220px;
+  background: var(--glass-strong); border:1px solid var(--line); border-radius: var(--radius);
+  padding: 12px 14px; display:none; flex-direction:column; gap:10px;
+  opacity:0; transform: translateX(-12px); pointer-events:none;
+  transition: opacity .2s ease, transform .2s ease;
+}
+.hands-status.is-open{ display:flex; opacity:1; transform: translateX(0); pointer-events:auto; }
+.hand-status{ display:flex; flex-direction:column; gap:2px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+.hand-status:nth-of-type(2){ padding-bottom:0; border-bottom:none; }
+.hand-status-role{ font-size:10px; color: var(--cyan); letter-spacing:.12em; }
+.hand-status-desc{ font-size:10.5px; color: var(--text-dim); }
+.hand-status-state{ font-size:13px; color: var(--text); margin-top:2px; }
+.hand-status-state.is-ok{ color: var(--green); }
+.hand-status-state.is-warn{ color: var(--amber); }
+.hand-status-letter{ font-size:11px; color: var(--text-dim); padding-top:2px; border-top:1px solid var(--line); }
+.hand-status-letter b{ color: var(--cyan); font-size:18px; font-weight:700; margin-left:4px; }
+.hand-status-gate{ font-size:10.5px; color: var(--amber); min-height: 1.2em; }
+
+/* --------------------------------------------------------------- ERROR --- */
+.error-screen{ position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding: 40px; text-align:center; background: var(--bg); color: var(--text); }
+.error-screen h2{ color: var(--amber); letter-spacing:.1em; }
+.error-screen p{ color: var(--text-dim); max-width: 480px; }
+
+/* ----------------------------------------------------------- RESPONSIVE --- */
+@media (max-width: 720px){
+  .brand{ font-size:15px; letter-spacing:.15em; } .brand-sub{ display:none; }
+  .diag{ display:none; } .hint{ display:none; }
+  .actions{ margin-left: auto; }
+  .target-letter{ font-size: 64px; } .target-card{ padding: 20px 26px; }
+  .home{ padding: 70px 16px; gap: 24px; }
+  .mode-card{ width: 86vw; }
+  .telemetry{ display:none; }
+  .forca-gallows{ width: 100px; height: 112px; }
+  .forca-keyboard{ max-width: 300px; }
+}
