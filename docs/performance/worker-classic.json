@@ -1,0 +1,372 @@
+{
+  "date": "2026-10-21T01:11:03.227Z",
+  "browser": "155.0.4283.62",
+  "workerType": "classic",
+  "version": "0.10.14",
+  "delegate": "GPU",
+  "input": "canvas 320x240 sem mão",
+  "supported": true,
+  "initMs": 3835.2000000029802,
+  "samples": [
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 13.200000002980232,
+      "inferenceMs": 12.700000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 11.199999995529652,
+      "inferenceMs": 11,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 11,
+      "inferenceMs": 10.599999994039536,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 10.5,
+      "inferenceMs": 10.200000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.30000000447034836,
+      "roundTripMs": 10.600000001490116,
+      "inferenceMs": 10.099999994039536,
+      "hands": 0
+    },
+    {
+      "copyMs": 0,
+      "roundTripMs": 10.700000002980232,
+      "inferenceMs": 10.399999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.19999999552965164,
+      "roundTripMs": 10.5,
+      "inferenceMs": 10,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 10.800000004470348,
+      "inferenceMs": 10.399999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.19999999552965164,
+      "roundTripMs": 11.599999994039536,
+      "inferenceMs": 11.200000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.19999999552965164,
+      "roundTripMs": 15,
+      "inferenceMs": 14.600000001490116,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 13.899999998509884,
+      "inferenceMs": 13.399999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 14,
+      "inferenceMs": 13.299999997019768,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 10.699999995529652,
+      "inferenceMs": 10.199999995529652,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 10,
+      "inferenceMs": 9.700000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 12.300000004470348,
+      "inferenceMs": 11.700000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 14.899999998509884,
+      "inferenceMs": 14.399999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 12,
+      "inferenceMs": 11.599999994039536,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 15.900000005960464,
+      "inferenceMs": 15.399999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 19.099999994039536,
+      "inferenceMs": 18.600000001490116,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 21.399999998509884,
+      "inferenceMs": 20.900000005960464,
+      "hands": 0
+    },
+    {
+      "copyMs": 0,
+      "roundTripMs": 11.100000001490116,
+      "inferenceMs": 10.799999997019768,
+      "hands": 0
+    },
+    {
+      "copyMs": 0,
+      "roundTripMs": 10.100000001490116,
+      "inferenceMs": 9.800000004470348,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 20.799999997019768,
+      "inferenceMs": 20.399999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.19999999552965164,
+      "roundTripMs": 17.299999997019768,
+      "inferenceMs": 17,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 17.299999997019768,
+      "inferenceMs": 17,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 10.299999997019768,
+      "inferenceMs": 9.899999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 11.200000002980232,
+      "inferenceMs": 10.899999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 11.700000002980232,
+      "inferenceMs": 11.200000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 15.5,
+      "inferenceMs": 15,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 9.5,
+      "inferenceMs": 9,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 9.899999998509884,
+      "inferenceMs": 9.600000001490116,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 11.200000002980232,
+      "inferenceMs": 10.700000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 11.800000004470348,
+      "inferenceMs": 11.5,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 32.79999999701977,
+      "inferenceMs": 32.399999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 19.700000002980232,
+      "inferenceMs": 19.5,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 39.5,
+      "inferenceMs": 39,
+      "hands": 0
+    },
+    {
+      "copyMs": 0,
+      "roundTripMs": 23.5,
+      "inferenceMs": 23.100000001490116,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 28.5,
+      "inferenceMs": 28.19999999552965,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 17.399999998509884,
+      "inferenceMs": 17,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 15.399999998509884,
+      "inferenceMs": 15.100000001490116,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 18.5,
+      "inferenceMs": 18.100000001490116,
+      "hands": 0
+    },
+    {
+      "copyMs": 0,
+      "roundTripMs": 15.699999995529652,
+      "inferenceMs": 15.400000005960464,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 21.30000000447035,
+      "inferenceMs": 20.899999998509884,
+      "hands": 0
+    },
+    {
+      "copyMs": 0,
+      "roundTripMs": 16.399999998509884,
+      "inferenceMs": 16.099999994039536,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 30,
+      "inferenceMs": 29.700000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 17.399999998509884,
+      "inferenceMs": 17.100000001490116,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 22.700000002980232,
+      "inferenceMs": 22.100000001490116,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 11.5,
+      "inferenceMs": 11,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.20000000298023224,
+      "roundTripMs": 11.5,
+      "inferenceMs": 11,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 12.300000004470348,
+      "inferenceMs": 11.699999995529652,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 14.199999995529652,
+      "inferenceMs": 13.800000004470348,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 14.199999995529652,
+      "inferenceMs": 13.700000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.19999999552965164,
+      "roundTripMs": 16,
+      "inferenceMs": 15.5,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.09999999403953552,
+      "roundTripMs": 13.099999994039536,
+      "inferenceMs": 12.800000004470348,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 10.600000001490116,
+      "inferenceMs": 10.199999995529652,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.19999999552965164,
+      "roundTripMs": 12.799999997019768,
+      "inferenceMs": 12.299999997019768,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 10.100000001490116,
+      "inferenceMs": 9.700000002980232,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 14.5,
+      "inferenceMs": 14,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.10000000149011612,
+      "roundTripMs": 14.100000001490116,
+      "inferenceMs": 13.800000004470348,
+      "hands": 0
+    },
+    {
+      "copyMs": 0.19999999552965164,
+      "roundTripMs": 12.799999997019768,
+      "inferenceMs": 12.299999997019768,
+      "hands": 0
+    }
+  ]
+}

@@ -1,262 +1,159 @@
-# 🤟 LIBRAS ARCADE — Jogo Educativo de Datilologia por Gestos
+# Libras Arcade 1.5
 
-Um jogo educativo, no mesmo estilo visual e técnico do
-[`jarvis-hud`](.) (interface holográfica controlada por gestos), que ensina
-o **alfabeto manual (datilologia) da Libras** transformando sua webcam em
-controle de jogo: você forma o sinal com a mão de verdade e o próprio app
-reconhece a letra.
+Jogo educacional de datilologia em Libras, desenvolvido no contexto de uma Liga de Inteligência Artificial. A webcam fornece landmarks da mão para um classificador geométrico executado no navegador, que alimenta os modos **Treino, Soletrar e Forca**.
 
-Projeto irmão de [`jarvis-hud`](.) e inspirado na ideia de reconhecimento de
-gestos do repositório
-[`CristianSena17/Reconhecimento-Libras`](https://github.com/CristianSena17/Reconhecimento-Libras),
-mas reimplementado **100% no navegador** (sem Python, sem backend, sem passo
-de treinamento) — ver seção [Método adotado](#-método-adotado-e-diferença-para-o-projeto-de-referência) para
-entender exatamente o que foi reaproveitado e o que foi refeito.
+Esta documentação descreve a auditoria da FASE 00 e as alterações de performance da FASE 01, em 20/10/2026, na branch `teste-ariel-versao-python`. O nome da branch indica uma direção futura: a aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
 
----
+Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arcade).
 
-## ⚡ A EXPERIÊNCIA
+## Os três jogos
 
-Na tela inicial você escolhe um modo e um nível apontando + fechando a
-pinça sobre o cartão (ou clicando, se preferir mouse/touch):
+| Modo | Funcionamento atual | Progressão |
+| --- | --- | --- |
+| Treino | Sorteia uma letra conforme a dificuldade. A letra confirmada é comparada com o alvo; acertos somam pontos, erros e tempo esgotado zeram a sequência. | Sobe um nível a cada 5 letras corretas, até o nível 5. |
+| Soletrar | Sorteia uma palavra e recebe suas letras em ordem. O cronômetro é por letra; completar a palavra acrescenta bônus. | Sobe um nível a cada 5 letras corretas, até o nível 5. |
+| Forca | Sorteia palavra e dica. Cada palpite correto revela todas as ocorrências; repetidos não acrescentam erros. Com 6 erros, perde-se a rodada. Não há cronômetro. | Sobe um nível a cada 3 palavras vencidas, até o nível 5. |
 
-- **🔤 Modo Treino** — o jogo mostra uma letra; você forma o sinal
-  correspondente com a mão e segura por ~0,7s até a barra circular
-  completar. Acertou, ganha pontos e cai a próxima letra.
-- **🧩 Modo Soletrar** — o jogo sorteia uma palavra e você soletra letra por
-  letra, contra um cronômetro. Completar a palavra dá um bônus de pontos.
+O menu permite escolher os níveis iniciais 1, 2 e 3; os níveis 4 e 5 são alcançados pela progressão. Treino e Soletrar compartilham um recorde local; a Forca mantém outro. Não há limite de rodadas para encerrar automaticamente a sessão. Após vitória/derrota na Forca, uma nova palavra começa após 1,6 s; no Treino e ao concluir uma palavra, a pausa de avanço é de 450 ms.
 
-Sequências de acertos (streak) multiplicam sua pontuação. Errou ou o tempo
-acabou? A sequência zera, mas o jogo continua — sem "vidas", pra manter o
-foco em aprender, não em punir.
+## Como executar
 
----
+Sirva a raiz que contém este README, `index.html`, `js/` e `css/`. Não abra o HTML por `file://`.
 
-## 🛠 REQUISITOS DO SISTEMA
+Requisitos: webcam com permissão, navegador com módulos ES, Canvas, `getUserMedia` e suporte ao runtime MediaPipe/WASM e ao delegate GPU solicitado. Use `localhost` ou HTTPS. Não existe matriz de compatibilidade validada nesta fase nem fallback explícito de GPU para CPU.
 
-- **Navegador:** Chrome ou Edge recomendados (também funciona em Firefox e Safari)
-- **Hardware:** Webcam
-- **Conexão:** Internet na primeira execução (baixa o runtime WASM e o
-  modelo `.task` do MediaPipe via CDN — depois fica em cache do navegador)
-- Não precisa de Python, Node no runtime, nem instalação de dependências —
-  é um site estático puro, igual ao `jarvis-hud`
+Com Python 3 já instalado, execute na raiz:
 
----
-
-## 🚀 COMO RODAR LOCALMENTE
-
-Câmeras só funcionam em contexto seguro (`localhost` ou `https`), então
-**não abra o `index.html` com duplo clique** — sirva por um servidor local:
-
-### Opção 1 — Node.js (recomendado)
-```bash
-npx serve
+```powershell
+# Windows com Python Launcher
+py -m http.server 8000 --bind 127.0.0.1
 ```
 
-### Opção 2 — VSCode
-Instale a extensão **Live Server** e clique em "Go Live" com o `index.html` aberto.
+Em ambientes onde Python 3 é acessível por `python` ou `python3`, use esse executável com os mesmos argumentos. Abra [localhost:8000](http://localhost:8000), clique em **Começar** e permita a câmera. Pare o servidor com `Ctrl+C`. Python serve apenas os arquivos estáticos nessa opção; não processa os sinais.
 
-### Opção 3 — Python (se já tiver instalado)
-```bash
-python3 -m http.server 8000
-```
+Alternativas existentes de desenvolvimento: Live Server do VS Code ou `npx serve` com Node.js instalado. `npx serve` pode baixar o pacote de servidor; ele não é uma dependência versionada do projeto. Não há `package.json`, instalação de dependências da aplicação ou etapa de build.
 
-Depois acesse o endereço mostrado no terminal e permita o acesso à câmera.
+É necessária conectividade para os recursos externos quando eles não estiverem em cache. O repositório não contém service worker, modelo local ou garantia de funcionamento offline.
 
----
+## Interação
 
-## 📂 ESTRUTURA DO PROJETO
+| Ação | Entrada implementada |
+| --- | --- |
+| Escolher um modo | Clique/toque ou cursor do indicador com pinça sobre o cartão. |
+| Escolher nível inicial | Clique/toque nos números 1–3; não há seleção de nível por gesto implementada. |
+| Confirmar letra estática | Sustentar a candidata por 600 ms, com tolerância de 250 ms a perda breve da candidata. |
+| Confirmar J/Z | Formar pose-base e executar trajetória; reconhecimento experimental separado do hold. |
+| Abrir guia | Botões “Guia do alfabeto” ou “Aprender Libras”. |
+| Sair da rodada | Botão Sair, `Esc`, pinça sobre Sair ou deslize da mão da esquerda para a direita na imagem espelhada. |
+| Fechar guia | Clique em Fechar, `Esc`, deslize ou punho fechado fora das telas de jogo. |
+| Abrir diagnóstico | Tecla `d`; o painel fica oculto pelo CSS em telas de até 720 px. |
 
-```
-libras-arcade/
-├── index.html          # Estrutura da interface (HUD, menu, telas de jogo)
-├── css/
-│   └── style.css       # Tema visual (herdado do jarvis-hud + componentes de jogo)
+Mouse/toque são alternativas de **navegação**; as respostas dos jogos continuam dependendo do reconhecimento. O teclado desenhado na Forca é um indicador de palpites, sem entrada por clique. O suporte de navegação por teclado está incompleto: os cartões recebem foco, mas não tratam Enter/Espaço.
+
+Há marcação de identificação do jogador e ranking, porém o ranking não tem preenchimento/persistência implementados e faltam estilos específicos desses painéis. A presença dos botões não significa um ranking funcional. Veja os achados no [roadmap](docs/ROADMAP.md).
+
+## Reconhecimento existente e limites
+
+A cobertura **nominal** do código é de 26 letras:
+
+- Regras estáticas: `A B C D E F G H I K L M N O P Q R S T U V W X Y`.
+- Trajetórias experimentais: `J Z`.
+
+Essa lista descreve a implementação, não comprova precisão, conformidade pedagógica ou reconhecimento confiável de todas as letras. H, K e X, por exemplo, são tratados como poses estáticas neste código; isso não é uma afirmação linguística sobre a realização correta desses sinais em Libras.
+
+O MediaPipe detecta a mão e seus 21 pontos; a classificação das letras é feita por regras próprias. Distâncias são normalizadas pela distância entre pulso e base do dedo médio, com proteção contra divisão por zero. Extensão/curvatura de dedos, posição do polegar, distâncias e orientação recebem escores fuzzy. A maior pontuação acima de `MIN_SCORE = 0.55` vira candidata. O percentual apresentado como “confiança” é um escore heurístico, sem calibração estatística.
+
+J/Z usam histórico de até 1.300 ms, suavização por 3 amostras, mínimo de 6 amostras e critérios de trajetória. O reconhecimento estático continua ativo durante esse processamento, podendo competir com a pose-base. Há ainda desempates por ordem de regras, como o caso sintético de I/Y registrado na auditoria. Iluminação, oclusão, escala, posição, orientação e frequência de frames precisam de avaliação real.
+
+A configuração atual detecta **uma mão** (`numHands: 1`), atribui a primeira detecção ao papel lógico `right` e mantém `REQUIRE_LEFT_HAND: false`. Não identifica lateralidade nesse caminho. O painel de duas mãos é um resquício de outra configuração; ativar só a flag da esquerda impediria confirmações.
+
+As 90 palavras cadastradas têm dicas e usam letras da cobertura nominal. A dificuldade das palavras não é filtrada pela dificuldade individual das letras; Soletrar/Forca não têm exatamente o mesmo conjunto por nível que Treino.
+
+## Arquitetura e estrutura
+
+```text
+.
+├── index.html              # Telas, vídeo, Canvas, HUD, guia e painéis
+├── css/style.css           # Tema HUD, estados visuais e regra responsiva
 ├── js/
-│   ├── vision.js        # Carrega o MediaPipe HandLandmarker e a webcam (igual jarvis-hud)
-│   ├── libras.js          # Classificador geométrico do alfabeto manual (o "cérebro" novo)
-│   ├── game.js              # Motor de gamificação: modos, pontuação, streak, timer
-│   ├── data.js                # Dicas de cada letra + banco de palavras do modo Soletrar
-│   ├── ui.js                    # Liga reconhecimento + jogo à interface (telas, feedback)
-│   └── app.js                     # Ponto de entrada: boot, câmera, loop, orquestração
-└── README.md
+│   ├── app.js              # Boot, desenho e conexão dos componentes
+│   ├── vision.js           # MediaPipe, câmera, loop e landmarks
+│   ├── libras.js           # Regras estáticas, trajetórias, hold e navback
+│   ├── data.js             # Letras, dificuldades, 90 palavras e dicas
+│   ├── game.js             # Treino/Soletrar, pontos, sequência e tempo
+│   ├── forca.js            # Palpites, erros e vitórias da Forca
+│   └── ui.js               # DOM, eventos, telas, cursor e interações
+├── AGENTS.md               # Contrato de engenharia e regras de Git
+├── docs/ROADMAP.md         # Diagnóstico classificado e fases futuras
+├── docs/state.md           # Estado da entrega e próxima ação
+└── specs/                  # Arquitetura detalhada, contratos e evidências
 ```
 
----
+`app.js` carrega modelo e câmera após o clique inicial, constrói os motores e inicia o loop. A cada inferência, desenha a mão, atualiza `LibrasEngine` e entrega o cursor à UI. O motor emite `frame`, `signconfirmed` e `navback`; a UI encaminha a letra ao jogo ativo e traduz seus eventos para o DOM.
 
-## 🖐 COMO INTERAGIR
+O detalhamento de dependências, eventos e recursos está em [specs/system.md](specs/system.md). O catálogo pedagógico importa o classificador, que importa a visão; portanto até os motores de jogo têm uma dependência transitiva do módulo remoto de MediaPipe.
 
-| Ação                                    | Como fazer                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------ |
-| Escolher modo/nível no menu               | Aponte com o indicador + feche a pinça sobre o cartão (ou clique)   |
-| Sinalizar uma letra                       | Forme o sinal com a mão e **segure** até a barra circular completar |
-| Ver o guia do alfabeto                    | Botão "📖 GUIA DO ALFABETO" no rodapé                                |
-| Sair do jogo e voltar ao menu             | Botão "🚪 SAIR" no rodapé (ou tecla `Esc`)                           |
-| Ver dados brutos do classificador (debug) | Tecla `d`                                                          |
+## Tecnologias e dependências efetivas
 
-> Por que sair não é por gesto? Porque o gesto de "punho fechado" é
-> literalmente a forma da letra **A** neste alfabeto — usar punho como
-> atalho de saída faria o jogo te tirar da tela toda vez que você tentasse
-> acertar o sinal de A. Por isso, dentro do jogo, sair é sempre uma ação
-> explícita (botão ou tecla), e a navegação por gesto fica só no menu, onde
-> não há sinais sendo avaliados.
+| Tecnologia | Uso verificado |
+| --- | --- |
+| JavaScript com módulos ES, HTML e CSS | Aplicação estática, sem framework ou bundler. |
+| MediaPipe Tasks Vision `0.10.14` | Import JS e WASM via jsDelivr; `HandLandmarker` em modo VIDEO com delegate GPU. |
+| Modelo `hand_landmarker/float16/1` | Download de `storage.googleapis.com` durante o boot. |
+| Canvas, `requestAnimationFrame`, eventos nativos | Desenho, agendamento e comunicação entre módulos. |
+| Google Fonts | Rajdhani e Share Tech Mono importadas pelo HTML. |
+| `localStorage` | Recordes de pontuação; não armazena imagens ou landmarks no código auditado. |
 
----
+## Performance e diagnóstico
 
-## 🔤 LETRAS SUPORTADAS NESTA V1
+Já existem intervalo mínimo de 50 ms entre tentativas de inferência, descarte de frames com `currentTime` repetido, captura solicitada em 320×240 (máximo 480×360, até 30 FPS), Canvas interno de 640×480 e caches parciais de texto/estado na UI.
 
-`A · B · D · F · I · L · O · U · V · W · Y`
+Na FASE 01, o FPS passou a contar inferências concluídas na última janela de 1.000 ms. O loop mantém uma única cadeia de rAF; o Canvas evita redefinir dimensões iguais e limpar repetidamente uma imagem já vazia. Modelo, resolução, limites de confiança, regras e cadência mínima foram preservados.
 
-Este classificador reconhece **sinais estáticos** (uma "foto" da mão já
-formada). Letras que dependem de **movimento** (H, J, K, X, Z, entre outras)
-ou de diferenças muito finas de toque/orientação (C, E, G, M, N, P, Q, R, S,
-T) ficam fora da v1 — veja como estender isso na seção abaixo.
+Para consultar as métricas locais pelo console do navegador:
 
-Todas as palavras do banco do modo Soletrar (`js/data.js`) usam só essas
-letras, então tudo é jogável de ponta a ponta.
+```javascript
+const vision = await import('./js/vision.js');
+vision.getPerformanceMetrics();
+```
 
----
+O snapshot retorna FPS, callbacks, inferências e callbacks ignorados por frame repetido/intervalo; média, p95 e máximo de inferência, consumidor (desenho + reconhecimento + UI) e trabalho total do ciclo, em milissegundos. Tempos usam as últimas 120 amostras; FPS usa apenas 1 s. Os buffers ocupam 3.840 bytes de dados numéricos. A consulta calcula os percentis, sem ordenar arrays a cada inferência. O HUD recebe FPS na última inferência; se o vídeo parar, consulte o snapshot para observar a expiração para zero.
 
-## 🧠 COMO FUNCIONA
+Há comparação com MediaPipe real, vídeo controlado sem mãos e os três modos em Edge/Windows. Protocolo, números, arquivos brutos e avaliação de Worker/rVFC estão no [relatório da FASE 01](docs/performance/FASE01.md). O ganho comprovado é a remoção de trabalho redundante do Canvas; variação de tempo do modelo não é atribuída à alteração. Não há medição de CPU/RAM total nem homologação de precisão por webcam.
 
-1. `vision.js` carrega o **MediaPipe Tasks Vision** (`HandLandmarker`) e
-   liga a webcam — exatamente como no `jarvis-hud`. Nenhum vídeo sai do seu
-   navegador; toda a inferência roda localmente (WASM/GPU).
-2. `app.js` chama `detectForVideo()` em loop, desenha o esqueleto da mão no
-   `<canvas>` e repassa os landmarks para dois lugares:
-   - `libras.js`, que classifica a letra;
-   - um cálculo simples de cursor/pinça (só para navegar no menu).
-3. `libras.js` (`LibrasEngine`) normaliza os 21 pontos da mão pela escala
-   do próprio punho (igual `gestures.js` do `jarvis-hud`) e calcula, por
-   sinal candidato, o quanto o formato da mão "bate" com o padrão esperado
-   daquela letra (dedos estendidos/fechados, polegar afastado/cruzado,
-   dedos juntos/separados, pinça polegar-indicador etc). A letra com maior
-   pontuação acima de `MIN_SCORE` vira candidata; se ela for sustentada por
-   `HOLD_MS`, dispara o evento `signconfirmed`.
-4. `game.js` (`Game`) recebe a letra confirmada, compara com o alvo atual
-   (uma letra solta no Treino, ou a próxima letra da palavra no Soletrar),
-   atualiza pontuação/streak/timer e emite eventos (`correct`, `wrong`,
-   `wordcomplete`, `timeout`, `tick`, `sessionend`).
-5. `ui.js` escuta tudo isso e atualiza a tela: cartão da letra-alvo, anel de
-   "segurando o sinal", barra de tempo, placar, flashes de acerto/erro e as
-   telas de menu/jogo/resultado/guia.
+`detectForVideo()` continua síncrono na thread principal. Permanecem alocações de eventos, objetos e arrays; o diagnóstico aberto serializa JSON a cada frame. Worker e `requestVideoFrameCallback` não foram adotados, conforme justificativas e limites registrados no relatório.
 
----
+## Webcam, privacidade e erros
 
-## 🔬 MÉTODO ADOTADO (E DIFERENÇA PARA O PROJETO DE REFERÊNCIA)
+No código auditado, imagens e landmarks são processados no navegador, sem rotinas de upload ou gravação automática. `audio: false` dispensa captura de microfone. O acesso à rede carrega JS, WASM, modelo e fontes; isso não significa que o site seja totalmente offline. Os imports JS e fontes começam antes do clique; inicialização do modelo/WASM e solicitação da câmera ocorrem depois.
 
-O repositório [`CristianSena17/Reconhecimento-Libras`](https://github.com/CristianSena17/Reconhecimento-Libras)
-usa **Python + OpenCV + MediaPipe (Python) + uma rede neural treinada
-(TFLite)** sobre um histórico de coordenadas gravado em CSV — ele grava
-gestos com a própria webcam, gera um dataset e treina um classificador.
-Isso dá alta precisão e cobre o alfabeto completo + gestos dinâmicos, mas
-exige um passo de coleta de dados e treinamento, e roda como um app
-Python de desktop.
+Os únicos dados persistidos pela aplicação são os recordes nas chaves `libras-arcade:best-score` e `libras-arcade:best-score-forca`. O nome informado apenas atualiza o HUD no fluxo existente.
 
-Para manter a filosofia **100% client-side / zero backend / zero passo de
-treinamento** do `jarvis-hud`, este projeto usa em vez disso um
-**classificador geométrico por regras**: calcula distâncias entre pontos
-da mão (a mesma técnica de normalização por escala do `gestures.js`
-original) e compara com um "padrão esperado" de cada letra. Funciona sem
-dataset, sem servidor, sem passo de treino — mas cobre só um subconjunto
-de letras estáticas e é mais sensível a variações de mão/câmera do que um
-modelo treinado.
+Sair de uma rodada volta ao menu, mas **não desliga a câmera**. Não há descarte integrado de tracks/modelo nem pausa explícita por visibilidade. A auditoria registra esses pontos para a FASE 02.
 
-### Como evoluir para reconhecimento treinado (opcional)
+Se a inicialização falhar, confira conexão, origem local/HTTPS e permissão. A mensagem “Falha ao iniciar câmera” também pode representar erro de modelo/GPU. Falha no import remoto pode ocorrer antes desse tratamento. Erros no callback de detecção não têm recuperação. A promessa de `video.play()` não é aguardada; não existe timeout para esperar o vídeo.
 
-Se quiser precisão de nível "modelo treinado" mantendo tudo no navegador,
-dá pra trocar só o `libras.js` por um modelo em **TensorFlow.js**, sem
-mexer no resto do app (a interface só espera que `LibrasEngine` emita
-`signconfirmed` com uma letra):
+## Testes e validação
 
-1. Grave seu próprio dataset (landmarks + rótulo da letra) usando o mesmo
-   `HandLandmarker` já carregado aqui, salvando em `localStorage` ou como
-   download de CSV.
-2. Treine um classificador simples (rede densa pequena, como no notebook
-   `gesture_sign_classificationN.ipynb` do projeto de referência) usando
-   TensorFlow/Keras em Python.
-3. Converta o modelo para o formato TensorFlow.js
-   (`tensorflowjs_converter`).
-4. Carregue esse modelo em `libras.js` com `@tensorflow/tfjs` (via CDN,
-   igual o MediaPipe) e substitua a função `classify()` por uma chamada
-   `model.predict(features)`.
+Os testes focados da FASE 01 usam o runner nativo do Node (verificados em Node 24):
 
-Isso cobriria também letras dinâmicas (H, J, K, X, Z), desde que você
-alimente o modelo com uma janela de histórico de landmarks (como o array
-de "histórico" descrito no projeto de referência), em vez de um único
-frame.
+```powershell
+node --experimental-vm-modules --test tests/performance.test.cjs
+git diff --check
+```
 
----
+Cobrem FPS/latências, buffer, agendamento, Canvas, eventos dos três jogos e comparação com a base para reconhecimento/cursor/hold/J/Z sintéticos. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, `package.json`, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
 
-## ✏️ COMO PERSONALIZAR
+Precisão por webcam, navegação completa, acessibilidade e compatibilidade entre navegadores permanecem sem homologação. O benchmark sem mãos não mede a precisão das letras; os demais achados da auditoria seguem no roadmap.
 
-- **Adicionar/trocar palavras:** edite `WORDS` em `js/data.js` — use só
-  letras de `LETTER_POOL`.
-- **Adicionar uma letra nova ao classificador:** edite `RULES` em
-  `js/libras.js`, seguindo o padrão das regras existentes (combinação de
-  extensão de dedos + posição do polegar + distância entre pontas), e
-  adicione a dica/diagrama em `LETTERS` no `js/data.js`.
-- **Ajustar sensibilidade do reconhecimento:** os limiares (`FINGER_EXT_ON`,
-  `PINCH_ON`, `HOLD_MS` etc.) estão no objeto `CONFIG`, no topo de
-  `js/libras.js`. Use a tecla `d` para abrir o painel de diagnóstico e ver
-  os valores brutos em tempo real — ótimo para recalibrar na sua
-  iluminação/câmera.
-- **Trocar o visual:** cores e tipografia estão centralizadas em variáveis
-  CSS no topo de `css/style.css` (`:root`).
-- **Mudar tempo por rodada ou fórmula de pontuação:** `ROUND_MS` e a lógica
-  de `_onCorrectLetter()` em `js/game.js`.
+## Evolução com Python e contribuição
 
----
+A FASE 06 propõe pesquisa consentida de landmarks rotulados, normalização, separação de treino/avaliação, avaliação por letra e matriz de confusão, além de comparação entre classificadores estáticos e modelos temporais. Ferramentas e formato de exportação dependerão dos resultados. Não há dataset, classificador treinado de letras ou backend Python entregue. Não se deve gravar imagens/biometria automaticamente nem introduzir backend sem justificativa e autorização.
 
-## ⚠️ SOLUÇÃO DE PROBLEMAS
+Antes de contribuir, leia [AGENTS.md](AGENTS.md), o [índice técnico](specs/README.md) e o [roadmap](docs/ROADMAP.md). Preserve os três jogos, a identidade visual e os dados pedagógicos. Trabalhe na branch de desenvolvimento indicada, tarefa por tarefa, sem commit, push, PR ou merge sem autorização. A FASE 02 permanece pendente de autorização.
 
-### A tela de carregamento trava
-Verifique sua conexão com a internet — o navegador precisa baixar o modelo
-`.task` e o runtime WASM do MediaPipe na primeira execução.
+## Uso educacional e licença
 
-### Permissão de câmera negada / "FALHA AO INICIAR CÂMERA"
-Confirme que está acessando via `http://localhost` ou `https://`, permita a
-câmera no ícone de cadeado da barra de endereço e recarregue.
+Os diagramas são esquemas de dedos, não referências oficiais de Libras. A validação de sinais, dicas e movimentos requer especialistas em Libras. O jogo não substitui formação com profissionais e materiais pedagógicos validados.
 
-### As letras não são reconhecidas direito
-- Garanta boa iluminação e a mão inteira visível no quadro, de frente para
-  a câmera.
-- Abra o painel de diagnóstico (tecla `d`) e compare os valores mostrados
-  com os limiares em `CONFIG` no `js/libras.js` — ajuste conforme
-  necessário.
-- Lembre-se: este é um classificador **geométrico**, não um modelo
-  treinado — ele é mais sensível a ângulo de mão e distância da câmera do
-  que uma rede neural treinada com muitos exemplos. Aproxime a mão da
-  câmera e mantenha os dedos bem definidos (evite ângulos de perfil).
-
----
-
-## 📚 IMPORTANTE — SOBRE APRENDER LIBRAS COM ESTE APP
-
-Os diagramas de mão mostrados no jogo (e no guia do alfabeto) são
-**esquemas simplificados** gerados a partir da própria lógica do
-classificador (dedo estendido vs. fechado) — eles servem para o jogo, não
-são referência oficial de como formar cada sinal. Para aprender Libras de
-verdade, com a forma, movimento e uso correto de cada sinal, consulte
-materiais oficiais como o **VLibras** (vlibras.gov.br) ou o **INES —
-Instituto Nacional de Educação de Surdos** (ines.gov.br), ou aulas com
-instrutores surdos/fluentes em Libras.
-
----
-
-## 💻 STACK TECNOLÓGICO
-
-- **JavaScript (vanilla, módulos ES)** — sem frameworks, sem bundler
-- **MediaPipe Tasks Vision (`HandLandmarker`)** — carregado via CDN, inferência local na GPU
-- **HTML5 Canvas & `getUserMedia`** — captura de vídeo e desenho do esqueleto da mão em tempo real
-- **CSS3 (custom properties)** — tema HUD responsivo, sem biblioteca de UI
-- **`localStorage`** — persistência simples do recorde de pontuação
-
-Todo o processamento de visão computacional roda no navegador — nenhuma
-imagem da câmera é enviada para qualquer servidor.
-
----
-
-## LICENÇA
-
-MIT — livre para usar, modificar e compartilhar.
+O README anterior declarava licença MIT, mas não há arquivo `LICENSE` no conjunto versionado auditado. A formalização da licença está registrada como pendência; esta fase não adiciona nem altera termos de licença.

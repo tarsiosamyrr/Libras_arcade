@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-21T01:09:44.227Z",
+  "browser": "155.0.4283.62",
+  "version": "0.10.14",
+  "delegate": "GPU",
+  "input": "canvas 320x240 sem mão",
+  "supported": false,
+  "initMs": 303.80000000447035,
+  "error": "TypeError: Failed to execute 'importScripts' on 'WorkerGlobalScope': Module scripts don't support importScripts().",
+  "stack": "TypeError: Module scripts don't support importScripts().\n    at Wo (https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14:7:43114)\n    at https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14:7:45192\n    at Zo (https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14:7:45561)\n    at https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14:7:74766\n    at Qa (https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14:7:74778)\n    at kh.createFromOptions (https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14:7:114983)\n    at self.onmessage (http://127.0.0.1:64978/worker.js:8:39)"
+}

@@ -63,6 +63,7 @@ export class Game extends EventTarget {
   }
 
   /* -------------------------------------------------------- practice --- */
+  /** Inicia Treino com fila filtrada pela dificuldade; cada acerto agenda o próximo alvo. */
   startPractice(level = 1) {
     this.mode = 'practice';
     this.level = level;
@@ -88,6 +89,7 @@ export class Game extends EventTarget {
   }
 
   /* ------------------------------------------------------------ word --- */
+  /** Inicia Soletrar usando o banco do nível; o cronômetro é renovado por letra. */
   startWord(level = 1) {
     this.mode = 'word';
     this.level = level;
@@ -206,6 +208,9 @@ export class Game extends EventTarget {
   }
 
   /* ------------------------------------------------------------- fim --- */
+  /** Encerra o intervalo e salva o recorde compartilhado por Treino/Soletrar.
+   * Os timeouts de avanço não são cancelados aqui: limitação registrada no roadmap.
+   */
   end() {
     this._stopTimer();
     if (this.score > this.best) {

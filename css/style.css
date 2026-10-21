@@ -108,8 +108,8 @@ button{ font-family: inherit; cursor: pointer; }
    cima do botão — mesma linguagem visual do hover dos cartões do menu
    (.mode-card.is-hover), só que aplicada a um chip-btn qualquer */
 .chip-btn.is-hover{ border-color: var(--cyan); background: rgba(75,216,255,.16); box-shadow: 0 0 14px var(--cyan-dim); }
-/* botão SAIR um pouco maior que os demais chips — é a ação mais importante
-   da tela de jogo (a única forma de voltar ao menu), então merece um alvo
+/* Botão SAIR um pouco maior que os demais chips — é uma saída explícita
+   para o menu (também há Esc e gestos), então merece um alvo
    maior tanto pro dedo (gesto) quanto pro dedo (toque/clique) */
 #exit-btn{ font-size: 13px; padding: 10px 20px; }
 .hint{ font-size:13px; color: var(--text-dim); text-align:center; flex:1; }

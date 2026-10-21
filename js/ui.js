@@ -12,6 +12,7 @@ import { MOTION_LETTERS } from "./libras.js";
 const $ = (sel) => document.querySelector(sel);
 
 export class UI {
+  /** Registra os listeners uma vez no boot; ainda não existe um método de descarte. */
   constructor(librasEngine, game, forcaGame) {
     this.libras = librasEngine;
     this.game = game;
@@ -427,13 +428,10 @@ export class UI {
     else if (mode === 'forca') this.forca.start(level);
   }
 
-  /** SAIR precisa ir direto pra home — nunca passar pela tela de resultado
-   *  no meio do caminho. `game.end()`/`forca.end()` disparam o evento
-   *  `sessionend` (que normalmente abre a tela de resultado, pro caso de o
-   *  jogador terminar uma sessão jogando até o fim), então usamos essa
-   *  flag pra ignorar esse evento especificamente quando a saída é manual
-   *  — assim o único destino possível ao clicar SAIR (ou apertar Esc) é a
-   *  tela inicial, sem depender de ordem de execução entre os dois. */
+  /** A saída manual suprime a tela de resultados emitida por sessionend.
+   * Os motores não encerram a sessão automaticamente por número de rodadas;
+   * este fluxo retorna ao menu, mantendo câmera e inferência em execução.
+   */
   exitToHome() {
     this._exitingManually = true;
     if (this.currentScreen === 'forca-play') this.forca.end();
@@ -582,10 +580,12 @@ export class UI {
 
   /* ============================================= navegação por gesto --- */
   _bindGestureNav() {
+    // Compatibilidade com evento legado; app.js entrega o cursor por chamada direta.
     window.addEventListener('libras-cursor', (e) => this._onCursorFrame(e.detail));
   }
 
   _onCursorFrame({ cursor, pinch, fist }) {
+    // Coordenadas normalizadas da imagem; o recorte object-fit do vídeo não é compensado.
     if (!this.cursorEl) return;
 
     if (cursor) {

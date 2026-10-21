@@ -1,0 +1,9 @@
+# Marcos técnicos
+
+## 20/10/2026 — Performance, FASE 01
+
+FPS corrigido, telemetria limitada e loop/Canvas otimizados. Baseline e alternativas executadas com MediaPipe real em entrada controlada; testes diferenciais preservam regras e jogos. [Relatório e limites](../docs/performance/FASE01.md). Alterações locais sem commit; FASE 02 não iniciada.
+
+## 20/10/2026 — Auditoria documental inicial
+
+Arquitetura, contratos e limites foram descritos a partir da base `9063154f5661c50fc7312059aa769709615b3e70`, na branch `teste-ariel-versao-python`. A FASE 00 atualiza documentação e comentários, preservando comportamento. O [roadmap](../docs/ROADMAP.md) registra inconsistências e fases futuras; [testing.md](testing.md) distingue verificações locais de validação real ainda pendente. O Git conserva o diff detalhado, sem commit automático.

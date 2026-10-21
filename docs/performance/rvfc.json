@@ -1,0 +1,659 @@
+{
+  "date": "2026-10-21T01:09:42.825Z",
+  "variant": "rvfc",
+  "baseline": "9063154f5661c50fc7312059aa769709615b3e70",
+  "input": "canvas 320x240, 30 Hz solicitado, sem mão",
+  "seconds": 4,
+  "repeats": 3,
+  "browser": "155.0.4283.62",
+  "platform": "win32",
+  "cpu": "AMD Ryzen 7 5825U with Radeon Graphics         ",
+  "environment": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36 Edg/155.0.0.0",
+    "hardwareConcurrency": 16,
+    "deviceMemory": 16,
+    "video": {
+      "width": 320,
+      "height": 240
+    },
+    "rvfc": "function",
+    "renderer": "ANGLE (AMD, AMD Radeon (TM) Graphics (0x000015E7) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+  },
+  "errors": [],
+  "regression": [
+    {
+      "name": "Treino: evento confirmado soma pontos na tela de jogo",
+      "passed": true
+    },
+    {
+      "name": "Soletrar: sequência confirmada completa palavra e bônus",
+      "passed": true
+    },
+    {
+      "name": "Forca: repetição não pontua novamente",
+      "passed": true
+    },
+    {
+      "name": "Forca: vitória por eventos de reconhecimento",
+      "passed": true
+    },
+    {
+      "name": "Forca: seis erros encerram rodada",
+      "passed": true
+    },
+    {
+      "name": "Saída retorna ao menu",
+      "passed": true
+    }
+  ],
+  "sourceSha256": {
+    "js/vision.js": "4441e9b8dd6572aec7b58638d22d802be1d269ee73961d2432a4f3272686873d",
+    "js/app.js": "074b2cd7b44bdd195c0efc02ea24f339c65acfd374c2477216a1f2297c664fb7",
+    "js/libras.js": "21639eba10c85e9cc3318eb2b1ee7876a7575105fbf9436af1090b35d13ea7cf",
+    "js/ui.js": "5472015f6938a5bdfde5cf9ab89683f386131123e052ad4bf0220b0e08ba0a6c",
+    "js/game.js": "e5b223d8721edeceeaa7b7283d55c015bca00995c22205a168c3af2fb842ae70",
+    "js/forca.js": "1aec5580bc47cae85cfbe1c49825b9ff58ca3b991b719b35eab5c68d8377e8dc"
+  },
+  "runs": [
+    {
+      "mode": "home",
+      "debug": false,
+      "repeat": 1,
+      "durationMs": 4016.7999999970198,
+      "processed": 62,
+      "fps": 15.435172276450409,
+      "displayedFps": 20,
+      "callbackHz": 30.123481378233862,
+      "refreshHz": 60.246962756467724,
+      "callbacks": 121,
+      "clears": 62,
+      "hands": 0,
+      "screen": "home",
+      "inferenceMs": {
+        "count": 62,
+        "mean": 9.36935483784445,
+        "p95": 9.899999998509884,
+        "max": 11.800000004470348
+      },
+      "consumerMs": {
+        "count": 62,
+        "mean": 0.05645161302339646,
+        "p95": 0.10000000149011612,
+        "max": 0.19999999552965164
+      },
+      "frameGapMs": {
+        "count": 61,
+        "mean": 65.29180327863966,
+        "p95": 83.39999999850988,
+        "max": 100.20000000298023
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 21434888
+    },
+    {
+      "mode": "practice",
+      "debug": false,
+      "repeat": 1,
+      "durationMs": 4012.2000000029802,
+      "processed": 62,
+      "fps": 15.452868750300071,
+      "displayedFps": 20,
+      "callbackHz": 30.158018044940462,
+      "refreshHz": 59.81755645277447,
+      "callbacks": 121,
+      "clears": 62,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 62,
+        "mean": 11.14516129032258,
+        "p95": 15.799999997019768,
+        "max": 28.299999997019768
+      },
+      "consumerMs": {
+        "count": 62,
+        "mean": 0.0612903225325769,
+        "p95": 0.10000000149011612,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 61,
+        "mean": 65.28360655745033,
+        "p95": 80.89999999850988,
+        "max": 100.20000000298023
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13734645
+    },
+    {
+      "mode": "word",
+      "debug": false,
+      "repeat": 1,
+      "durationMs": 4001.89999999851,
+      "processed": 58,
+      "fps": 14.493115770014642,
+      "displayedFps": 20,
+      "callbackHz": 29.73587545916797,
+      "refreshHz": 59.97151353109507,
+      "callbacks": 119,
+      "clears": 58,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 58,
+        "mean": 9.948275861940507,
+        "p95": 12.899999998509884,
+        "max": 24
+      },
+      "consumerMs": {
+        "count": 58,
+        "mean": 0.06896551762675417,
+        "p95": 0.19999999552965164,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 57,
+        "mean": 68.99122807017544,
+        "p95": 86.39999999850988,
+        "max": 100.30000000447035
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13379634
+    },
+    {
+      "mode": "forca",
+      "debug": false,
+      "repeat": 1,
+      "durationMs": 4005.89999999851,
+      "processed": 63,
+      "fps": 15.726802965631553,
+      "displayedFps": 20,
+      "callbackHz": 30.20544696573679,
+      "refreshHz": 60.16126213836832,
+      "callbacks": 121,
+      "clears": 63,
+      "hands": 0,
+      "screen": "forca-play",
+      "inferenceMs": {
+        "count": 63,
+        "mean": 9.211111110827279,
+        "p95": 10,
+        "max": 11.300000004470348
+      },
+      "consumerMs": {
+        "count": 63,
+        "mean": 0.057142856811720225,
+        "p95": 0.10000000149011612,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 62,
+        "mean": 63.443548387096776,
+        "p95": 68.89999999850988,
+        "max": 100.10000000149012
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13197113
+    },
+    {
+      "mode": "practice",
+      "debug": true,
+      "repeat": 1,
+      "durationMs": 4014.10000000149,
+      "processed": 61,
+      "fps": 15.196432575166876,
+      "displayedFps": 20,
+      "callbackHz": 29.894621459344673,
+      "refreshHz": 59.78924291868935,
+      "callbacks": 120,
+      "clears": 61,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 61,
+        "mean": 11.175409835870148,
+        "p95": 12.5,
+        "max": 16.299999997019768
+      },
+      "consumerMs": {
+        "count": 61,
+        "mean": 0.09016393467051084,
+        "p95": 0.19999999552965164,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 60,
+        "mean": 66.3983333333085,
+        "p95": 81.19999999552965,
+        "max": 99.89999999850988
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13882140
+    },
+    {
+      "mode": "home",
+      "debug": false,
+      "repeat": 2,
+      "durationMs": 4014.60000000149,
+      "processed": 62,
+      "fps": 15.443630747764905,
+      "displayedFps": 20,
+      "callbackHz": 29.890898221480462,
+      "refreshHz": 60.03088726147326,
+      "callbacks": 120,
+      "clears": 62,
+      "hands": 0,
+      "screen": "home",
+      "inferenceMs": {
+        "count": 62,
+        "mean": 11.709677419475009,
+        "p95": 13.899999998509884,
+        "max": 21.899999998509884
+      },
+      "consumerMs": {
+        "count": 62,
+        "mean": 0.05161290315370406,
+        "p95": 0.10000000149011612,
+        "max": 0.19999999552965164
+      },
+      "frameGapMs": {
+        "count": 61,
+        "mean": 65.01311475417164,
+        "p95": 84.30000000447035,
+        "max": 105
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13885444
+    },
+    {
+      "mode": "practice",
+      "debug": false,
+      "repeat": 2,
+      "durationMs": 4014.60000000149,
+      "processed": 62,
+      "fps": 15.443630747764905,
+      "displayedFps": 20,
+      "callbackHz": 29.890898221480462,
+      "refreshHz": 59.283614805936246,
+      "callbacks": 120,
+      "clears": 62,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 62,
+        "mean": 13.658064514759086,
+        "p95": 25,
+        "max": 45.79999999701977
+      },
+      "consumerMs": {
+        "count": 62,
+        "mean": 0.05322580688422726,
+        "p95": 0.10000000149011612,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 61,
+        "mean": 65.29999999995114,
+        "p95": 75.79999999701977,
+        "max": 85.70000000298023
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13690389
+    },
+    {
+      "mode": "word",
+      "debug": false,
+      "repeat": 2,
+      "durationMs": 4007,
+      "processed": 59,
+      "fps": 14.724232592962316,
+      "displayedFps": 20,
+      "callbackHz": 29.698028450212128,
+      "refreshHz": 59.89518342899925,
+      "callbacks": 119,
+      "clears": 59,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 59,
+        "mean": 10.79322033905882,
+        "p95": 25.899999998509884,
+        "max": 30.700000002980232
+      },
+      "consumerMs": {
+        "count": 59,
+        "mean": 0.06440677961050453,
+        "p95": 0.10000000149011612,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 58,
+        "mean": 66.95862068968087,
+        "p95": 84.39999999850988,
+        "max": 86.30000000447035
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 14269971
+    },
+    {
+      "mode": "forca",
+      "debug": false,
+      "repeat": 2,
+      "durationMs": 4015.0999999940395,
+      "processed": 62,
+      "fps": 15.441707554006635,
+      "displayedFps": 20,
+      "callbackHz": 29.887175910980584,
+      "refreshHz": 60.02341162121934,
+      "callbacks": 120,
+      "clears": 62,
+      "hands": 0,
+      "screen": "forca-play",
+      "inferenceMs": {
+        "count": 62,
+        "mean": 9.833870968150515,
+        "p95": 12.799999997019768,
+        "max": 27
+      },
+      "consumerMs": {
+        "count": 62,
+        "mean": 0.0612903225325769,
+        "p95": 0.10000000149011612,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 61,
+        "mean": 64.46065573772934,
+        "p95": 83.10000000149012,
+        "max": 100.39999999850988
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13624525
+    },
+    {
+      "mode": "practice",
+      "debug": true,
+      "repeat": 2,
+      "durationMs": 4016.2999999970198,
+      "processed": 60,
+      "fps": 14.939123073486673,
+      "displayedFps": 20,
+      "callbackHz": 30.127231531531457,
+      "refreshHz": 60.0054776785048,
+      "callbacks": 121,
+      "clears": 60,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 60,
+        "mean": 9.00166666644315,
+        "p95": 9.700000002980232,
+        "max": 10.600000001490116
+      },
+      "consumerMs": {
+        "count": 60,
+        "mean": 0.0866666667163372,
+        "p95": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 59,
+        "mean": 66.93898305094848,
+        "p95": 83.20000000298023,
+        "max": 100.69999999552965
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 14252140
+    },
+    {
+      "mode": "home",
+      "debug": false,
+      "repeat": 3,
+      "durationMs": 4015.60000000149,
+      "processed": 60,
+      "fps": 14.941727263666136,
+      "displayedFps": 20,
+      "callbackHz": 29.634425739604502,
+      "refreshHz": 59.766909054664545,
+      "callbacks": 119,
+      "clears": 60,
+      "hands": 0,
+      "screen": "home",
+      "inferenceMs": {
+        "count": 60,
+        "mean": 9.39166666654249,
+        "p95": 11.200000002980232,
+        "max": 12
+      },
+      "consumerMs": {
+        "count": 60,
+        "mean": 0.050000000124176346,
+        "p95": 0.10000000149011612,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 59,
+        "mean": 66.09999999997474,
+        "p95": 84,
+        "max": 102.10000000149012
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 14043476
+    },
+    {
+      "mode": "practice",
+      "debug": false,
+      "repeat": 3,
+      "durationMs": 4014.5,
+      "processed": 60,
+      "fps": 14.945821397434301,
+      "displayedFps": 20,
+      "callbackHz": 29.64254577157803,
+      "refreshHz": 59.783285589737204,
+      "callbacks": 119,
+      "clears": 60,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 60,
+        "mean": 10.808333333581686,
+        "p95": 12.299999997019768,
+        "max": 12.899999998509884
+      },
+      "consumerMs": {
+        "count": 60,
+        "mean": 0.053333333258827526,
+        "p95": 0.10000000149011612,
+        "max": 0.19999999552965164
+      },
+      "frameGapMs": {
+        "count": 59,
+        "mean": 66.41694915256762,
+        "p95": 83.89999999850988,
+        "max": 101.20000000298023
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13834423
+    },
+    {
+      "mode": "word",
+      "debug": false,
+      "repeat": 3,
+      "durationMs": 4026.8000000044703,
+      "processed": 59,
+      "fps": 14.65183272075457,
+      "displayedFps": 20,
+      "callbackHz": 30.048673884937337,
+      "refreshHz": 60.09734776987467,
+      "callbacks": 121,
+      "clears": 59,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 59,
+        "mean": 9.205084746293092,
+        "p95": 11.100000001490116,
+        "max": 12.299999997019768
+      },
+      "consumerMs": {
+        "count": 59,
+        "mean": 0.06271186420473002,
+        "p95": 0.19999999552965164,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 58,
+        "mean": 68.37586206891413,
+        "p95": 100.10000000149012,
+        "max": 100.60000000149012
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 14033877
+    },
+    {
+      "mode": "forca",
+      "debug": false,
+      "repeat": 3,
+      "durationMs": 4005,
+      "processed": 61,
+      "fps": 15.230961298377029,
+      "displayedFps": 20,
+      "callbackHz": 29.9625468164794,
+      "refreshHz": 59.9250936329588,
+      "callbacks": 120,
+      "clears": 61,
+      "hands": 0,
+      "screen": "forca-play",
+      "inferenceMs": {
+        "count": 61,
+        "mean": 9.852459016637724,
+        "p95": 11.699999995529652,
+        "max": 15.5
+      },
+      "consumerMs": {
+        "count": 61,
+        "mean": 0.0639344264493614,
+        "p95": 0.19999999552965164,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 60,
+        "mean": 65.57999999995033,
+        "p95": 83.39999999850988,
+        "max": 102
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 13772919
+    },
+    {
+      "mode": "practice",
+      "debug": true,
+      "repeat": 3,
+      "durationMs": 4002,
+      "processed": 58,
+      "fps": 14.492753623188406,
+      "displayedFps": 20,
+      "callbackHz": 29.985007496251875,
+      "refreshHz": 59.97001499250375,
+      "callbacks": 120,
+      "clears": 58,
+      "hands": 0,
+      "screen": "play",
+      "inferenceMs": {
+        "count": 58,
+        "mean": 9.929310344801895,
+        "p95": 12.799999997019768,
+        "max": 15.900000005960464
+      },
+      "consumerMs": {
+        "count": 58,
+        "mean": 0.07758620663963516,
+        "p95": 0.20000000298023224,
+        "max": 0.20000000298023224
+      },
+      "frameGapMs": {
+        "count": 57,
+        "mean": 68.4263157894214,
+        "p95": 98.39999999850988,
+        "max": 99.60000000149012
+      },
+      "longTasksMs": {
+        "count": 0,
+        "mean": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "heapBytes": 14379302
+    }
+  ]
+}

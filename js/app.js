@@ -1,5 +1,6 @@
 /* ==========================================================================
-   app.js — Ponto de entrada (Versão otimizada sem alocação no loop)
+   app.js — Inicialização, desenho da mão e conexão entre visão e interface.
+   O callback é direto, mas reconhecimento e UI ainda alocam objetos/eventos.
    ========================================================================== */
 
 import { loadModel, startCamera, startDetectionLoop, HAND_CONNECTIONS, LM } from "./vision.js";
@@ -23,6 +24,7 @@ const errorMessage = document.getElementById('error-message');
 const video = document.getElementById('webcam');
 const canvas = document.getElementById('overlay');
 const ctx = canvas.getContext('2d');
+let overlayHasHands = false;
 
 const RING_CIRC = 565.48;
 
@@ -32,10 +34,13 @@ function setBootProgress(pct, label) {
   if (label) { bootStatus.textContent = label; bootLog.textContent = label; }
 }
 
-// 1. OTIMIZAÇÃO: Resolução fixa de baixa carga (o CSS expande na tela)
+// Atribuir dimensões iguais também apaga o bitmap e reinicia o contexto 2D.
 function resizeCanvas() {
-  canvas.width = 640;
-  canvas.height = 480;
+  if (canvas.width !== 640 || canvas.height !== 480) {
+    canvas.width = 640;
+    canvas.height = 480;
+    overlayHasHands = false;
+  }
 }
 window.addEventListener('resize', resizeCanvas);
 
@@ -45,9 +50,12 @@ const FILL_TIP_COLOR = 'rgba(75, 216, 255, 0.9)';
 const FILL_JOINT_COLOR = 'rgba(75, 216, 255, 0.55)';
 
 function drawHands(results) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
   const hands = results?.landmarks;
-  if (!hands || hands.length === 0) return;
+  const hasHands = !!hands?.length;
+  // Limpa no desaparecimento da mão, mas evita trabalho quando já está vazio.
+  if (hasHands || overlayHasHands) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  overlayHasHands = hasHands;
+  if (!hasHands) return;
 
   const w = canvas.width;
   const h = canvas.height;
@@ -126,7 +134,7 @@ async function boot() {
     const forca = new ForcaGame();
     const ui = new UI(libras, game, forca);
 
-    // 2. OTIMIZAÇÃO: Chamada direta sem criar new CustomEvent() no loop
+    // O cursor usa chamada direta; LibrasEngine continua emitindo eventos por frame.
     startDetectionLoop(video, (results, fps) => {
       drawHands(results);
       libras.update(results, performance.now(), fps);

@@ -66,7 +66,7 @@ export const CONFIG = {
   PINCH_ON: 0.42,          // ponta do polegar tocando outra ponta (F, O)
   SPREAD_TOGETHER: 0.22,   // dedos colados (U)
   SPREAD_APART: 0.34,      // dedos separados (V, W)
-  MIN_SCORE: 0.55,         // confiança mínima para aceitar uma letra
+  MIN_SCORE: 0.55,         // escore heurístico mínimo; não é probabilidade de acerto
   HOLD_MS: 600,            // tempo segurando o sinal para confirmar
   RELEASE_GRACE_MS: 250,   // tolerância a "tremores" de detecção
 
@@ -105,11 +105,9 @@ export const CONFIG = {
   Z_MIN_STEP_RATIO: 0.22,          // fração do deslocamento mínimo usada como "passo" pra contar uma inversão de direção
 
   // --- DUAS MÃOS: mão esquerda como "portão" de confirmação ---
-  // A mão esquerda funciona como referência de forma/posição durante a
-  // interação: precisa estar visível e ABERTA (dedos estendidos) para o
-  // reconhecimento da mão direita avançar. Ligar/desligar aqui sem precisar
-  // mexer em mais nada — com REQUIRE_LEFT_HAND: false, o reconhecimento
-  // volta a funcionar só com a mão direita (como na v1).
+  // O portão existe no motor, mas vision.js detecta uma mão e sempre retorna
+  // left=null. Ativar somente esta flag bloquearia as confirmações; duas mãos
+  // exigem revisar também a detecção e a atribuição de papéis em vision.js.
   REQUIRE_LEFT_HAND: false,
   LEFT_HAND_OPEN_MIN: 0.6,   // confiança mínima (0..1) de "mão aberta" pra considerar o portão liberado
 
@@ -516,7 +514,7 @@ const RULES = {
 export const STATIC_LETTERS = Object.keys(RULES);
 // letras reconhecidas por TRAJETÓRIA DE MOVIMENTO (ver LibrasEngine._trackMotionSigns)
 export const MOTION_LETTERS = ['J', 'Z'];
-// todas as 26 letras suportadas pelo jogo
+// Cobertura nominal de 26 letras; presença na lista não comprova precisão pedagógica.
 export const SUPPORTED_LETTERS = [...STATIC_LETTERS, ...MOTION_LETTERS];
 
 function avg(...vals) { return vals.reduce((a, b) => a + b, 0) / vals.length; }
@@ -635,6 +633,10 @@ export class LibrasEngine extends EventTarget {
     this._navLastFireAt = -Infinity;
   }
 
+  /** Processa landmarks e emite frame/signconfirmed/navback de forma síncrona.
+   * O evento frame compartilha this.state; consumidores que guardarem histórico
+   * devem copiar os campos necessários. fps é recebido da camada de visão.
+   */
   update(results, nowMs, fps) {
     const handsList = results?.landmarks ?? [];
     this.state.hands = handsList.length;
@@ -701,6 +703,7 @@ export class LibrasEngine extends EventTarget {
     return this.state;
   }
 
+  /** Zera somente a sustentação estática; trajetórias e navegação têm buffers próprios. */
   resetHold() {
     this._holdStart = null;
     this._holdKey = null;

@@ -54,6 +54,7 @@ export class ForcaGame extends EventTarget {
     this.status = 'idle';      // 'playing' | 'won' | 'lost'
   }
 
+  /** Inicia uma sessão sem cronômetro; cada palavra mantém seu conjunto de palpites. */
   start(level = 1) {
     this.level = level;
     this.score = 0;
@@ -157,6 +158,7 @@ export class ForcaGame extends EventTarget {
     }
   }
 
+  /** Salva o recorde da Forca e volta a idle; timeouts de rodada não são cancelados. */
   end() {
     this._saveBestIfNeeded();
     this.dispatchEvent(new CustomEvent('sessionend', { detail: this._snapshot() }));

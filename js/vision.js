@@ -1,5 +1,6 @@
 /* ==========================================================================
-   vision.js — Otimizado (Ultra Leve / Resolução Baixa / 20 FPS)
+   vision.js — Modelo remoto, captura local e agendamento da inferência.
+   O intervalo limita tentativas; não garante FPS nem latência de processamento.
    ========================================================================== */
 
 import {
@@ -12,12 +13,60 @@ const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmark
 
 let handLandmarker = null;
 let rafId = null;
+let loopGeneration = 0;
+let metricsGeneration = 0;
 let lastProcessTime = 0;
 let lastVideoTime = -1;
-const PROCESS_INTERVAL_MS = 50; // 50ms = 20 FPS (Suficiente e super leve)
+const PROCESS_INTERVAL_MS = 50; // Teto nominal de 20 inferências/s; depende de vídeo e rAF.
 
-let frameTimes = [];
+// Buffers circulares: 120 amostras (~6 s no teto), sem shift/alocação por inferência.
+const SAMPLE_LIMIT = 120;
+const frameTimes = new Float64Array(SAMPLE_LIMIT);
+const inferenceTimes = new Float64Array(SAMPLE_LIMIT);
+const consumerTimes = new Float64Array(SAMPLE_LIMIT);
+const cycleTimes = new Float64Array(SAMPLE_LIMIT);
+let sampleIndex = 0;
+let sampleCount = 0;
+let processedFrames = 0;
+let callbacks = 0;
+let skippedUnchanged = 0;
+let skippedInterval = 0;
 
+function recentFps(now) {
+  let count = 0;
+  for (let i = 0; i < sampleCount; i++) {
+    const index = (sampleIndex - 1 - i + SAMPLE_LIMIT) % SAMPLE_LIMIT;
+    if (frameTimes[index] <= now - 1000) break;
+    count++;
+  }
+  return count;
+}
+
+function summarize(buffer) {
+  // Ordenação ocorre apenas sob consulta, fora do caminho normal de desenho.
+  const values = Array.from(buffer.subarray(0, sampleCount)).sort((a, b) => a - b);
+  return {
+    mean: values.reduce((sum, value) => sum + value, 0) / (sampleCount || 1),
+    p95: values[Math.max(0, Math.ceil(sampleCount * 0.95) - 1)] || 0,
+    max: values[sampleCount - 1] || 0
+  };
+}
+
+/**
+ * Snapshot local, sem imagens: FPS na janela (agora - 1000 ms, agora]; tempos em ms
+ * nas últimas 120 inferências. Skips contam callbacks, não frames perdidos da câmera.
+ * Consultar também quando o vídeo estiver parado para obter FPS zero após 1 s.
+ */
+export function getPerformanceMetrics() {
+  return {
+    fps: recentFps(performance.now()), samples: sampleCount, processedFrames, callbacks,
+    skippedUnchanged, skippedInterval,
+    inferenceMs: summarize(inferenceTimes), consumerMs: summarize(consumerTimes),
+    cycleMs: summarize(cycleTimes)
+  };
+}
+
+/** Carrega WASM e modelo, solicitando GPU; não há fallback explícito para CPU. */
 export async function loadModel(onProgress) {
   onProgress?.(10, 'Baixando runtime WASM…');
   const vision = await FilesetResolver.forVisionTasks(WASM_BASE);
@@ -38,9 +87,10 @@ export async function loadModel(onProgress) {
   onProgress?.(85, 'Modelo carregado. Preparando câmera…');
 }
 
+/** Associa o stream ao vídeo; o encerramento das tracks ainda precisa ser integrado. */
 export async function startCamera(videoEl) {
   // Resolução reduzida para 320x240 (ideal) / 480x360 (máximo)
-  // O MediaPipe usa 256x256 internamente, então essa resolução economiza muita RAM sem perder precisão
+  // São restrições solicitadas à câmera; o impacto em memória e precisão não foi medido.
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { 
       width: { ideal: 320, max: 480 }, 
@@ -64,31 +114,59 @@ export async function startCamera(videoEl) {
   });
 }
 
+/** Uma cadeia de rAF por vez; mantém deduplicação, timestamps e intervalo original. */
 export function startDetectionLoop(videoEl, onResults) {
+  stopDetectionLoop();
+  const generation = loopGeneration;
+  const metricsSession = ++metricsGeneration;
+  lastProcessTime = 0;
+  lastVideoTime = -1;
+  sampleIndex = sampleCount = processedFrames = callbacks = skippedUnchanged = skippedInterval = 0;
   const tick = (now) => {
+    if (generation !== loopGeneration) return;
+    rafId = null;
+    callbacks++;
     // Só processa se o frame da câmera mudou E se já passou o intervalo de 50ms (20 FPS)
     if (handLandmarker && videoEl.currentTime !== lastVideoTime && (now - lastProcessTime >= PROCESS_INTERVAL_MS)) {
       lastProcessTime = now;
       lastVideoTime = videoEl.currentTime;
 
+      const inferenceStart = performance.now();
       const results = handLandmarker.detectForVideo(videoEl, now);
+      const inferenceEnd = performance.now();
+      const fps = recentFps(inferenceEnd) + 1;
+      const index = sampleIndex;
+      frameTimes[index] = inferenceEnd;
+      inferenceTimes[index] = inferenceEnd - inferenceStart;
+      consumerTimes[index] = cycleTimes[index] = 0;
+      sampleIndex = (sampleIndex + 1) % SAMPLE_LIMIT;
+      sampleCount = Math.min(sampleCount + 1, SAMPLE_LIMIT);
+      processedFrames++;
 
-      frameTimes.push(now);
-      if (frameTimes.length > 20) frameTimes.shift(); // Evita reallocar memória do array
-      const fps = frameTimes.length;
-
+      const consumerStart = performance.now();
       onResults(results, fps);
+      // Parar finaliza a amostra; reiniciar não pode contaminar a nova sessão.
+      if (metricsSession !== metricsGeneration) return;
+      const consumerEnd = performance.now();
+      consumerTimes[index] = consumerEnd - consumerStart;
+      cycleTimes[index] = consumerEnd - inferenceStart;
+    } else if (handLandmarker) {
+      if (videoEl.currentTime === lastVideoTime) skippedUnchanged++;
+      else skippedInterval++;
     }
-    rafId = requestAnimationFrame(tick);
+    if (generation === loopGeneration) rafId = requestAnimationFrame(tick);
   };
   rafId = requestAnimationFrame(tick);
 }
 
+/** Cancela o loop e invalida reagendamentos antigos; câmera/modelo têm ciclo separado. */
 export function stopDetectionLoop() {
-  if (rafId) cancelAnimationFrame(rafId);
+  loopGeneration++;
+  if (rafId !== null) cancelAnimationFrame(rafId);
   rafId = null;
 }
 
+/** A primeira mão assume o papel lógico "right"; a lateralidade não é consultada. */
 export function splitHandsByRole(results) {
   const landmarksList = results?.landmarks ?? [];
   if (landmarksList.length === 0) return { left: null, right: null };

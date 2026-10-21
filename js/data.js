@@ -2,8 +2,8 @@
    data.js
    O "dataset" pedagógico do jogo: dica de como formar cada letra e o banco
    de palavras usado nos modos Soletrar e Forca. Edite livremente para
-   adicionar palavras novas — use só letras presentes em LETTERS (o motor
-   geométrico só reconhece esse subconjunto, ver libras.js).
+   adicionar palavras novas — use só letras presentes em LETTERS e confira
+   SUPPORTED_LETTERS em libras.js. Cobertura nominal não valida reconhecimento real.
 
    NOTA sobre `shape` (usado só no diagrama esquemático de referência):
    é uma aproximação visual simplificada (dedo "levantado" vs "recolhido"),
@@ -57,11 +57,10 @@ Object.keys(LETTERS).forEach((k) => {
 
 export const LETTER_POOL = Object.keys(LETTERS);
 
-// bancos de palavras — usados tanto pelo Modo Soletrar (game.js) quanto
-// pelo Modo Forca (forca.js). Nível 1 usa só letras "sólidas" (mais
-// confiáveis), nível 2 mistura as novas letras estáticas, nível 3 inclui
-// as mais desafiadoras (orientação fina da mão e/ou movimento: G, K, P, Q,
-// R, X, J, Z). Níveis 4 e 5 não usam letras novas (o alfabeto já está todo
+// Bancos compartilhados por Soletrar e Forca. A dificuldade da palavra é
+// definida pelo banco, sem filtrar pela dificuldade de cada letra: há letras
+// de dificuldade 2 no nível 1 e de dificuldade 3 no nível 2.
+// Níveis 4 e 5 não usam letras novas (o alfabeto já está todo
 // liberado desde o nível 3) — eles sobem a dificuldade combinando essas
 // letras difíceis em palavras mais longas, e reduzindo o tempo por rodada
 // no Modo Soletrar (ver ROUND_MS_BASE em game.js) — no Modo Forca, o
@@ -87,6 +86,7 @@ export const WORDS = {
   ]
 };
 
+/** Retorna o array do banco, sem copiá-lo; níveis ausentes usam o nível 1. */
 export function wordBank(level = 1) {
   return WORDS[level] || WORDS[1];
 }
@@ -206,6 +206,7 @@ export const WORD_HINTS = {
   MEXERICA: 'Outro nome para a tangerina, fruta cítrica pequena e doce.'
 };
 
+/** Consulta a grafia exata do banco e fornece mensagem genérica quando faltar dica. */
 export function hintFor(word) {
   return WORD_HINTS[word] || 'Sem dica cadastrada para esta palavra ainda.';
 }
