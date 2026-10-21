@@ -711,6 +711,18 @@ export class LibrasEngine extends EventTarget {
     this.state.holdProgress = 0;
   }
 
+  /** Interrompe gestos incompletos quando a câmera pausa ou a tela muda. */
+  resetTracking() {
+    this._reset();
+    this._navBuffer = [];
+    this.state.hands = 0;
+    this.state.fps = 0;
+    this.state.leftHand = { present: false, open: false };
+    this.state.rightHand = { present: false };
+    this.state.leftGateOpen = false;
+    this._emit();
+  }
+
   _trackHold(letter, nowMs) {
     if (!letter) {
       if (this._holdKey && nowMs - this._lastMismatchAt < CONFIG.RELEASE_GRACE_MS) {

@@ -83,7 +83,6 @@ export class UI {
     this._bindGameEvents();
     this._bindForcaEvents();
     this._bindMouseFallback();
-    this._bindGestureNav();
 
     this._renderHud(this.game._snapshot());
   }
@@ -406,7 +405,17 @@ export class UI {
 
   /* ============================================================ telas --- */
   _showScreen(name) {
+    const changed = this.currentScreen !== name;
     this.currentScreen = name;
+    if (changed) {
+      // Um sinal iniciado no menu ou em outro modo não pode confirmar na nova tela.
+      this.libras.resetTracking();
+      this._cacheProgress = null;
+      this._cacheLetter = null;
+      this._cacheStatusKey = null;
+      this._pinchArmed = false;
+      this._exitPinchArmed = false;
+    }
     if (this.homeEl) this.homeEl.classList.toggle('hidden', name !== 'home');
     if (this.playEl) this.playEl.classList.toggle('is-open', name === 'play');
     if (this.forcaPlayEl) this.forcaPlayEl.classList.toggle('is-open', name === 'forca-play');
@@ -422,6 +431,7 @@ export class UI {
   }
 
   startMode(mode) {
+    if (this.currentScreen === 'play' || this.currentScreen === 'forca-play') this.exitToHome();
     const level = this.pendingLevels[mode] || 1;
     if (mode === 'practice') this.game.startPractice(level);
     else if (mode === 'word') this.game.startWord(level);
@@ -579,11 +589,6 @@ export class UI {
   }
 
   /* ============================================= navegação por gesto --- */
-  _bindGestureNav() {
-    // Compatibilidade com evento legado; app.js entrega o cursor por chamada direta.
-    window.addEventListener('libras-cursor', (e) => this._onCursorFrame(e.detail));
-  }
-
   _onCursorFrame({ cursor, pinch, fist }) {
     // Coordenadas normalizadas da imagem; o recorte object-fit do vídeo não é compensado.
     if (!this.cursorEl) return;

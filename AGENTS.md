@@ -74,16 +74,21 @@ Preservar alternativas explícitas de navegação por mouse/toque/teclado, feedb
 
 ## Verificações disponíveis
 
-Não há `package.json`, build, lint, typecheck ou CI versionados. A FASE 01 adiciona testes focados com Node e scripts de benchmark opcionais que requerem Playwright no ambiente. Não inventar comandos `npm run ...` nem instalar dependências automaticamente.
+O `package.json` contém apenas scripts para as suítes focadas; não há dependências locais, build, lint, typecheck ou CI versionados. A versão mais antiga de Node.js efetivamente verificada é `v24.18.0`; versões anteriores não foram testadas nesta integração. A FASE 01 usa `vm.SyntheticModule`/`vm.SourceTextModule` e requer `--experimental-vm-modules` nessa versão. Scripts de benchmark opcionais requerem Playwright no ambiente. Não instalar dependências automaticamente.
 
 ```powershell
-node --experimental-vm-modules --test tests/performance.test.cjs
+npm test
+npm run test:performance
+npm run test:camera
+# Equivalente direto da suíte completa:
+node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs
 # Sintaxe, sem executar imports remotos nem solicitar webcam
 Get-ChildItem -LiteralPath js -Filter *.js | ForEach-Object {
     node --check $_.FullName
     if ($LASTEXITCODE -ne 0) { throw "Falha de sintaxe: $($_.Name)" }
 }
 git diff --check
+git diff --cached --check
 ```
 
 Ver comandos complementares e evidências em [specs/testing.md](specs/testing.md). Usar testes proporcionais ao escopo: dados e regras isoladas, relógio controlado para sessões e integração de eventos quando houver alteração funcional. Mocks não validam reconhecimento real. Webcam, navegadores, desempenho e acessibilidade precisam de avaliação específica.

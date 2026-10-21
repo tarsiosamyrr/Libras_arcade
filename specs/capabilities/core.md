@@ -2,8 +2,8 @@
 id: core
 contract_status: confirmed
 implementation_status: partial
-last_verified: 2026-10-20
-last_verified_ref: working-tree-fase01
+last_verified: 2026-10-21
+last_verified_ref: working-tree-integracao-fase02
 ---
 
 # Prática de datilologia nos três jogos
@@ -21,7 +21,7 @@ Jogador concede acesso à webcam e navega por controles ou gestos. Landmarks ali
 - Manter os três modos e seus feedbacks documentados no [README](../../README.md).
 - Preservar processamento local e não gravar imagens/biometria automaticamente.
 - Não confundir cobertura nominal com precisão ou validação pedagógica.
-- Evoluir em fases autorizadas, com evidência e documentação de riscos. FASE 00 apenas documental; FASE 01 permite instrumentação e remoção de trabalho redundante, preservando os contratos dos jogos e do reconhecimento.
+- Evoluir em fases autorizadas, com evidência e documentação de riscos. FASE 00 foi documental; FASE 01 instrumentou e removeu trabalho redundante; a FASE 02 acrescentou pausa, retomada, cancelamento e descarte de recursos, preservando os contratos dos jogos e do reconhecimento.
 
 ## Invariantes e regras de negócio
 
@@ -29,7 +29,7 @@ Treino compara uma letra; Soletrar recebe uma sequência e premia palavra comple
 
 ## Estado atual e lacunas
 
-Os motores e o classificador estão implementados, com cobertura nominal A–Z e 90 palavras. A FASE 01 corrige FPS e otimiza loop/Canvas com comparação controlada. Ciclo de recursos, isolamento de sessão, fluxo de ranking/resultados, acessibilidade e validade do reconhecimento possuem lacunas. A capacidade permanece `partial`; testes sintéticos não validam o uso real com câmera.
+Os motores e o classificador estão implementados, com cobertura nominal A–Z e 90 palavras. A FASE 01 corrigiu FPS e otimizou loop/Canvas com comparação controlada. A FASE 02 controla stream, modelo, loop, atrasos de rodada e pausa dos jogos; a integração ainda aguarda conclusão do cherry-pick e validação com webcam. Fluxo de ranking/resultados, acessibilidade e validade do reconhecimento possuem lacunas. A capacidade permanece `partial`; testes sintéticos não validam o uso real com câmera.
 
 ## Evidências de implementação e teste
 

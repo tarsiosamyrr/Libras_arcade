@@ -2,24 +2,34 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
-## Verificação atual — FASE 01
+## Verificação atual — integração das FASES 01 e 02
 
-Node `v24.18.0`, PowerShell, Edge `155.0.4283.62` e Playwright do ambiente. Não foram instaladas dependências na aplicação. A suíte focada não substitui a futura FASE 05.
+Integração verificada em 21/10/2026 com Node `v24.18.0` e PowerShell. Esta é a versão mais antiga efetivamente testada nesta integração; não houve ensaio em versões anteriores. Sem `--experimental-vm-modules`, `require('node:vm').SyntheticModule` retorna `undefined` e a suíte conjunta termina com 13 falhas da FASE 01 e 12 aprovações da FASE 02. Com a flag, `SyntheticModule` é uma função e a suíte conjunta passa com 25/25 testes. O aviso `ExperimentalWarning` do Node permanece esperado.
+
+O `package.json` padroniza os comandos sem dependências instaláveis nem mudança no runtime web. A flag aparece apenas na suíte completa e na FASE 01, que usa `vm.SyntheticModule`/`vm.SourceTextModule` em `tests/helpers/runtime.cjs`; a FASE 02 não precisa dela. Edge `155.0.4283.62` e Playwright pertencem à medição histórica da FASE 01; a integração não foi medida com navegador/webcam real. A suíte focada não substitui a futura FASE 05.
+
+Os testes diferenciais da FASE 01 chamam `git show 9063154:...`; esse commit precisa estar disponível no histórico local, inclusive em uma futura execução de CI. Os testes sintéticos não medem CPU/RAM total nem validam reconhecimento com webcam.
 
 ```powershell
-node --experimental-vm-modules --test tests/performance.test.cjs
+npm test
+npm run test:performance
+npm run test:camera
+# Equivalente direto da suíte conjunta:
+node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs
 Get-ChildItem -LiteralPath js -Filter *.js | ForEach-Object {
     node --check $_.FullName
     if ($LASTEXITCODE -ne 0) { throw "Falha de sintaxe: $($_.Name)" }
 }
 git diff --check
+git diff --cached --check
 ```
 
-- 13 testes: FPS lento e limites de 50/1.000 ms; durações separadas; buffer de 120 amostras; vídeo repetido; início/parada/reinício; desenho e limpeza; três motores; comparação com a base para estados, cursor, confirmações, hold, J/Z e navegação sintéticos.
-- Ciclo de teste: implementação anterior apresentou 7 falhas em 9 testes; a implementação passou. A revisão identificou duração zerada quando o consumidor parava o loop; teste ampliado falhou e passou após correção. A fixture inicial de navegação não atingia o deslocamento mínimo; foi ajustada sem mudar a regra do jogo.
+- FASE 01: 13 testes de FPS e limites de 50/1.000 ms; durações separadas; buffer de 120 amostras; vídeo repetido; início/parada/reinício; desenho e limpeza; três motores; comparação com a base para estados, cursor, confirmações, hold, J/Z e navegação sintéticos. A fixture de DOM e três vídeos sintéticos foram adaptados para o controle de visibilidade e `readyState` da FASE 02.
+- FASE 02: 12 testes de inicialização compartilhada, cancelamento de modelo/câmera, falha de reprodução, loop único, reinício de métricas após reabrir a câmera, erros do detector/consumidor, limpeza de gestos e pausa/cancelamento de avanços nos jogos. Usam substitutos locais e não validam hardware real.
+- Histórico da FASE 01: implementação anterior apresentou 7 falhas em 9 testes; a implementação passou. A revisão identificou duração zerada quando o consumidor parava o loop; teste ampliado falhou e passou após correção. A fixture inicial de navegação não atingia o deslocamento mínimo; foi ajustada sem mudar a regra do jogo.
 - Mocks substituem relógio, DOM mínimo, timers, storage e import remoto na VM; os módulos da aplicação são reais. Desenho compara a sequência de operações, não apenas quantidade de chamadas. Testes diferenciais leem o commit-base pelo Git.
 - Benchmark separado usa MediaPipe real, GPU e UI no navegador com vídeo gerado sem pessoas. Scripts, parâmetros, resultados brutos, regressões de eventos/DOM e limitações estão no [relatório da FASE 01](../docs/performance/FASE01.md).
-- `app.js` e `vision.js` mudaram funcionalmente nesta fase. CSS, dados, regras, jogos e UI preservam os hashes do snapshot de início da FASE 01. Em HTML, a conferência original identificou uma edição adicional de `js/app.js` para `./js/app.js`, com destinos equivalentes. Na consolidação para commit em 21/10, o arquivo já havia retornado a `js/app.js`; o estado encontrado foi preservado. A equivalência de todos os ASTs abaixo vale somente para a FASE 00.
+- Na FASE 01, `app.js` e `vision.js` mudaram funcionalmente; CSS, dados, regras, jogos e UI preservaram os hashes do snapshot de início daquela fase. Em HTML, a conferência original identificou uma edição adicional de `js/app.js` para `./js/app.js`, com destinos equivalentes. Na consolidação para commit em 21/10, o arquivo já havia retornado a `js/app.js`; o estado encontrado foi preservado. A equivalência de todos os ASTs abaixo vale somente para a FASE 00.
 
 ## Histórico da FASE 00 — ferramentas e resultados naquele momento
 
@@ -139,7 +149,7 @@ A auditoria avaliou as fontes reais em `vm.SourceTextModule`, com `localStorage`
 | I/Y | Features com extIndex/extMiddle/extRing=0, extPinky=1, thumbOut=1 e demais medidas afastando outras regras: I=1, Y=1; `classify()` retorna I por ordem. É um caso sintético, não estatística por usuário. |
 | Níveis | Comparar cada caractere de WORDS com `LETTERS[c].difficulty`: 11/13 palavras do nível 1 e 6/21 do nível 2 contêm letras com dificuldade maior que a do banco. |
 
-Essas reproduções confirmaram os comportamentos naquela auditoria. A FASE 01 corrige o FPS e versiona testes focados; os demais achados continuam pendentes conforme o roadmap.
+Essas reproduções confirmaram os comportamentos naquela auditoria. A FASE 01 corrigiu o FPS e a FASE 02 tratou parte dos recursos e callbacks antigos; o estado atual está no código e no [roadmap](../docs/ROADMAP.md).
 
 ## Validação documental
 

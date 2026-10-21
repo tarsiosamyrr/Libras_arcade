@@ -2,7 +2,7 @@
 
 Jogo educacional de datilologia em Libras, desenvolvido no contexto de uma Liga de Inteligência Artificial. A webcam fornece landmarks da mão para um classificador geométrico executado no navegador, que alimenta os modos **Treino, Soletrar e Forca**.
 
-Esta documentação descreve a auditoria da FASE 00 e as alterações de performance da FASE 01, em 20/10/2026, na branch `teste-ariel-versao-python`. O nome da branch indica uma direção futura: a aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
+Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01 e o ciclo de vida da câmera da FASE 02. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
 
 Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arcade).
 
@@ -31,7 +31,7 @@ py -m http.server 8000 --bind 127.0.0.1
 
 Em ambientes onde Python 3 é acessível por `python` ou `python3`, use esse executável com os mesmos argumentos. Abra [localhost:8000](http://localhost:8000), clique em **Começar** e permita a câmera. Pare o servidor com `Ctrl+C`. Python serve apenas os arquivos estáticos nessa opção; não processa os sinais.
 
-Alternativas existentes de desenvolvimento: Live Server do VS Code ou `npx serve` com Node.js instalado. `npx serve` pode baixar o pacote de servidor; ele não é uma dependência versionada do projeto. Não há `package.json`, instalação de dependências da aplicação ou etapa de build.
+Alternativas existentes de desenvolvimento: Live Server do VS Code ou `npx serve` com Node.js instalado. `npx serve` pode baixar o pacote de servidor; ele não é uma dependência versionada do projeto. O `package.json` contém apenas comandos de teste; a aplicação não exige `npm install`, dependências locais ou etapa de build.
 
 É necessária conectividade para os recursos externos quando eles não estiverem em cache. O repositório não contém service worker, modelo local ou garantia de funcionamento offline.
 
@@ -129,20 +129,29 @@ No código auditado, imagens e landmarks são processados no navegador, sem roti
 
 Os únicos dados persistidos pela aplicação são os recordes nas chaves `libras-arcade:best-score` e `libras-arcade:best-score-forca`. O nome informado apenas atualiza o HUD no fluxo existente.
 
-Sair de uma rodada volta ao menu, mas **não desliga a câmera**. Não há descarte integrado de tracks/modelo nem pausa explícita por visibilidade. A auditoria registra esses pontos para a FASE 02.
+Sair de uma rodada volta ao menu e mantém a câmera ativa para navegação por gesto. Ao ocultar a aba, a aplicação pausa inferência e rodada, interrompe as trilhas de vídeo e limpa gestos incompletos. Ao voltar, solicita a câmera novamente e retoma o tempo restante. Em `pagehide`, fecha o modelo; uma restauração pelo cache do navegador o carrega novamente.
 
-Se a inicialização falhar, confira conexão, origem local/HTTPS e permissão. A mensagem “Falha ao iniciar câmera” também pode representar erro de modelo/GPU. Falha no import remoto pode ocorrer antes desse tratamento. Erros no callback de detecção não têm recuperação. A promessa de `video.play()` não é aguardada; não existe timeout para esperar o vídeo.
+Falhas de permissão, câmera ausente ou ocupada e erros de inferência mostram uma tela com **TENTAR NOVAMENTE**. A abertura da câmera aguarda dados do vídeo e a promessa de `play()`, com limite de 10 s para dados iniciais. Confira conexão, origem local/HTTPS, permissão e disponibilidade da webcam. Falhas no import remoto ainda podem ocorrer antes do tratamento do aplicativo; não há fallback de GPU para CPU. As decisões e os cenários manuais estão em [Fase 02 — câmera e recursos](docs/fase-02-camera-recursos.md).
 
 ## Testes e validação
 
-Os testes focados da FASE 01 usam o runner nativo do Node (verificados em Node 24):
+Os testes focados das FASES 01 e 02 usam o runner nativo do Node. A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
 
 ```powershell
-node --experimental-vm-modules --test tests/performance.test.cjs
-git diff --check
+npm test
+npm run test:performance
+npm run test:camera
 ```
 
-Cobrem FPS/latências, buffer, agendamento, Canvas, eventos dos três jogos e comparação com a base para reconhecimento/cursor/hold/J/Z sintéticos. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, `package.json`, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
+Sem npm, os comandos equivalentes são:
+
+```powershell
+node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs
+node --experimental-vm-modules --test tests/performance.test.cjs
+node --test tests/phase02.test.mjs
+```
+
+`tests/performance.test.cjs` usa `vm.SyntheticModule` e `vm.SourceTextModule`, indisponíveis no Node 24.18.0 sem `--experimental-vm-modules`. Por isso a suíte completa e a FASE 01 usam a flag; a FASE 02 roda sem ela. Os testes cobrem FPS/latências, buffer, agendamento, Canvas, eventos dos três jogos, ciclo de câmera/modelo, pausa/retomada e comparação sintética com a base. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
 
 Precisão por webcam, navegação completa, acessibilidade e compatibilidade entre navegadores permanecem sem homologação. O benchmark sem mãos não mede a precisão das letras; os demais achados da auditoria seguem no roadmap.
 
@@ -150,7 +159,7 @@ Precisão por webcam, navegação completa, acessibilidade e compatibilidade ent
 
 A FASE 06 propõe pesquisa consentida de landmarks rotulados, normalização, separação de treino/avaliação, avaliação por letra e matriz de confusão, além de comparação entre classificadores estáticos e modelos temporais. Ferramentas e formato de exportação dependerão dos resultados. Não há dataset, classificador treinado de letras ou backend Python entregue. Não se deve gravar imagens/biometria automaticamente nem introduzir backend sem justificativa e autorização.
 
-Antes de contribuir, leia [AGENTS.md](AGENTS.md), o [índice técnico](specs/README.md) e o [roadmap](docs/ROADMAP.md). Preserve os três jogos, a identidade visual e os dados pedagógicos. Trabalhe na branch de desenvolvimento indicada, tarefa por tarefa, sem commit, push, PR ou merge sem autorização. A FASE 02 permanece pendente de autorização.
+Antes de contribuir, leia [AGENTS.md](AGENTS.md), o [índice técnico](specs/README.md) e o [roadmap](docs/ROADMAP.md). Preserve os três jogos, a identidade visual e os dados pedagógicos. Trabalhe na branch autorizada para cada entrega, tarefa por tarefa, sem commit, push, PR ou merge sem autorização.
 
 ## Uso educacional e licença
 

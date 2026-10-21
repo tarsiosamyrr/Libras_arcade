@@ -3,7 +3,7 @@
    O callback é direto, mas reconhecimento e UI ainda alocam objetos/eventos.
    ========================================================================== */
 
-import { loadModel, startCamera, startDetectionLoop, HAND_CONNECTIONS, LM } from "./vision.js";
+import { loadModel, startCamera, stopCamera, startDetectionLoop, disposeModel, HAND_CONNECTIONS, LM } from "./vision.js";
 import { LibrasEngine } from "./libras.js";
 import { Game } from "./game.js";
 import { ForcaGame } from "./forca.js";
@@ -20,6 +20,7 @@ const bootScreen = document.getElementById('boot-screen');
 const stage = document.getElementById('stage');
 const errorScreen = document.getElementById('error-screen');
 const errorMessage = document.getElementById('error-message');
+const retryBtn = document.getElementById('retry-camera-btn');
 
 const video = document.getElementById('webcam');
 const canvas = document.getElementById('overlay');
@@ -113,45 +114,129 @@ function computeNavState(results) {
   };
 }
 
+let runtime = null;
+let bootPromise = null;
+let started = false;
+let pageActive = true;
+let cameraTrack = null;
+let cameraEndedHandler = null;
+
+/** Impede listeners repetidos na mesma trilha após tentativas de retomada. */
+function detachCameraTrack() {
+  if (cameraTrack && cameraEndedHandler) cameraTrack.removeEventListener('ended', cameraEndedHandler);
+  cameraTrack = null;
+  cameraEndedHandler = null;
+}
+
+function cameraErrorMessage(error) {
+  switch (error?.name) {
+    case 'NotAllowedError': return 'Permissão de câmera negada. Libere o acesso nas configurações do navegador e tente novamente.';
+    case 'NotFoundError': return 'Nenhuma câmera foi encontrada. Conecte uma webcam e tente novamente.';
+    case 'NotReadableError': return 'A câmera está ocupada ou indisponível. Feche outros aplicativos que a estejam usando.';
+    case 'OverconstrainedError': return 'A câmera não atende aos requisitos de captura. Tente outra webcam.';
+    case 'SecurityError': return 'Acesso à câmera bloqueado. Abra o aplicativo em localhost ou HTTPS.';
+    default: return error?.message || 'Não foi possível acessar a câmera.';
+  }
+}
+
+/** Congela processamento e rodada antes de liberar a câmera da aba. */
+function suspend() {
+  detachCameraTrack();
+  stopCamera(video);
+  if (overlayHasHands) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  overlayHasHands = false;
+  runtime?.libras.resetTracking();
+  runtime?.game.pause();
+  runtime?.forca.pause();
+  runtime?.ui._onCursorFrame({ cursor: null, pinch: false, fist: false });
+}
+
+/** Mantém a sessão pausada para que a tentativa de câmera possa retomá-la. */
+function showError(error) {
+  console.error(error);
+  suspend();
+  bootScreen.classList.add('hidden');
+  stage.classList.add('hidden');
+  errorScreen.classList.remove('hidden');
+  errorMessage.textContent = cameraErrorMessage(error);
+}
+
+/** Boot e retomada compartilham a mesma instância de UI, câmera e modelo. */
 async function boot() {
-  try {
+  if (bootPromise) {
+    try { await bootPromise; } catch { /* A tentativa proprietária trata a falha. */ }
+    return;
+  }
+  const pending = (async () => {
     resizeCanvas();
     setBootProgress(5, 'Inicializando…');
-
     await loadModel((pct, label) => setBootProgress(pct, label));
-
+    if (document.hidden || !pageActive) return;
     setBootProgress(90, 'Solicitando permissão de câmera…');
-    await startCamera(video);
-
+    const stream = await startCamera(video);
+    if (document.hidden || !pageActive) { suspend(); return; }
+    const track = stream.getVideoTracks?.()[0];
+    if (track && track !== cameraTrack) {
+      detachCameraTrack();
+      cameraTrack = track;
+      cameraEndedHandler = () => {
+        if (video.srcObject === stream) showError(new Error('A câmera foi desconectada. Conecte-a e tente novamente.'));
+      };
+      track.addEventListener('ended', cameraEndedHandler);
+    }
     setBootProgress(100, 'Pronto.');
-    await new Promise((r) => setTimeout(r, 350));
-
     bootScreen.classList.add('hidden');
+    errorScreen.classList.add('hidden');
     stage.classList.remove('hidden');
-
-    const libras = new LibrasEngine();
-    const game = new Game();
-    const forca = new ForcaGame();
-    const ui = new UI(libras, game, forca);
-
+    if (!runtime) {
+      const libras = new LibrasEngine();
+      const game = new Game();
+      const forca = new ForcaGame();
+      runtime = { libras, game, forca, ui: new UI(libras, game, forca) };
+    }
+    runtime.game.resume();
+    runtime.forca.resume();
     // O cursor usa chamada direta; LibrasEngine continua emitindo eventos por frame.
     startDetectionLoop(video, (results, fps) => {
       drawHands(results);
-      libras.update(results, performance.now(), fps);
-      ui._onCursorFrame(computeNavState(results));
-    });
-
-  } catch (err) {
-    console.error(err);
-    bootScreen.classList.add('hidden');
-    errorScreen.classList.remove('hidden');
-    errorMessage.textContent = err?.message || 'Erro desconhecido.';
+      runtime.libras.update(results, performance.now(), fps);
+      runtime.ui._onCursorFrame(computeNavState(results));
+    }, showError);
+  })();
+  bootPromise = pending;
+  let retryCanceled = false;
+  try { await pending; }
+  catch (error) {
+    if (!document.hidden && pageActive) {
+      if (/^(Inicialização da câmera|Carregamento do modelo) cancelad/.test(error?.message || '')) retryCanceled = true;
+      else showError(error);
+    }
+  }
+  finally {
+    if (bootPromise === pending) bootPromise = null;
+    if (retryCanceled && started && pageActive && !document.hidden) boot();
   }
 }
 
 bootStartBtn.addEventListener('click', () => {
+  if (started) return;
+  started = true;
   bootGate.classList.add('hidden');
   bootCore.classList.remove('hidden');
   bootLog.classList.remove('hidden');
   boot();
+});
+retryBtn?.addEventListener('click', () => { if (!document.hidden) boot(); });
+document.addEventListener('visibilitychange', () => {
+  if (!started) return;
+  if (document.hidden) suspend();
+  else boot();
+});
+window.addEventListener('pagehide', () => {
+  pageActive = false;
+  if (started) { suspend(); disposeModel(); }
+});
+window.addEventListener('pageshow', (event) => {
+  pageActive = true;
+  if (started && event.persisted) boot();
 });

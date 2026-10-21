@@ -12,6 +12,13 @@ const WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 let handLandmarker = null;
+let modelPromise = null;
+let modelGeneration = 0;
+let cameraPromise = null;
+let cameraGeneration = 0;
+let cameraStream = null;
+let cameraVideo = null;
+let cameraAbort = null;
 let rafId = null;
 let loopGeneration = 0;
 let metricsGeneration = 0;
@@ -66,91 +73,165 @@ export function getPerformanceMetrics() {
   };
 }
 
-/** Carrega WASM e modelo, solicitando GPU; não há fallback explícito para CPU. */
+/** Compartilha o carregamento de WASM/modelo em GPU e descarta resultados antigos. */
 export async function loadModel(onProgress) {
-  onProgress?.(10, 'Baixando runtime WASM…');
-  const vision = await FilesetResolver.forVisionTasks(WASM_BASE);
-
-  onProgress?.(55, 'Carregando modelo de detecção de mãos…');
-  handLandmarker = await HandLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: MODEL_URL,
-      delegate: "GPU"
-    },
-    runningMode: "VIDEO",
-    numHands: 1, // 1 mão para economizar memória
-    minHandDetectionConfidence: 0.5,
-    minHandPresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  });
-
-  onProgress?.(85, 'Modelo carregado. Preparando câmera…');
+  if (handLandmarker) return handLandmarker;
+  if (modelPromise) return modelPromise;
+  const generation = modelGeneration;
+  const pending = (async () => {
+    onProgress?.(10, 'Baixando runtime WASM…');
+    const vision = await FilesetResolver.forVisionTasks(WASM_BASE);
+    onProgress?.(55, 'Carregando modelo de detecção de mãos…');
+    const model = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+      runningMode: 'VIDEO',
+      numHands: 1,
+      minHandDetectionConfidence: 0.5,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    // Descarte pode ocorrer enquanto WASM/modelo ainda carregam.
+    if (generation !== modelGeneration) {
+      model.close();
+      throw new Error('Carregamento do modelo cancelado.');
+    }
+    handLandmarker = model;
+    onProgress?.(85, 'Modelo carregado. Preparando câmera…');
+    return model;
+  })();
+  modelPromise = pending;
+  try { return await pending; }
+  finally { if (modelPromise === pending) modelPromise = null; }
 }
 
-/** Associa o stream ao vídeo; o encerramento das tracks ainda precisa ser integrado. */
+/** Abre no máximo um stream e só retorna após o vídeo conseguir reproduzir. */
 export async function startCamera(videoEl) {
+  if (cameraPromise) return cameraPromise;
+  if (cameraStream?.getTracks().some((track) => track.readyState === 'live') && cameraVideo === videoEl) return cameraStream;
+  if (cameraStream) stopCamera(cameraVideo);
+  const generation = cameraGeneration;
   // Resolução reduzida para 320x240 (ideal) / 480x360 (máximo)
   // São restrições solicitadas à câmera; o impacto em memória e precisão não foi medido.
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { 
-      width: { ideal: 320, max: 480 }, 
-      height: { ideal: 240, max: 360 },
-      frameRate: { ideal: 30, max: 30 }
-    },
-    audio: false
-  });
-
-  videoEl.srcObject = stream;
-
-  return new Promise((resolve) => {
-    videoEl.onloadeddata = () => {
-      videoEl.play();
-      resolve(stream);
-    };
-    if (videoEl.readyState >= 2) {
-      videoEl.play();
-      resolve(stream);
+  const pending = (async () => {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Câmera indisponível. Use localhost ou HTTPS e verifique o navegador.');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 320, max: 480 },
+        height: { ideal: 240, max: 360 },
+        frameRate: { ideal: 30, max: 30 }
+      },
+      audio: false
+    });
+    if (generation !== cameraGeneration) {
+      stream.getTracks().forEach((track) => track.stop());
+      throw new Error('Inicialização da câmera cancelada.');
     }
-  });
+    cameraStream = stream;
+    cameraVideo = videoEl;
+    videoEl.srcObject = stream;
+    try {
+      if (videoEl.readyState < 2) {
+        await new Promise((resolve, reject) => {
+          let timeoutId = null;
+          const cleanup = () => {
+            clearTimeout(timeoutId);
+            videoEl.removeEventListener('loadeddata', loaded);
+            videoEl.removeEventListener('error', failed);
+            if (cameraAbort === aborted) cameraAbort = null;
+          };
+          const loaded = () => { cleanup(); resolve(); };
+          const failed = () => { cleanup(); reject(new Error('Não foi possível carregar o vídeo da câmera.')); };
+          const aborted = () => { cleanup(); reject(new Error('Inicialização da câmera cancelada.')); };
+          timeoutId = setTimeout(() => { cleanup(); reject(new Error('A câmera não forneceu vídeo a tempo.')); }, 10000);
+          cameraAbort = aborted;
+          videoEl.addEventListener('loadeddata', loaded, { once: true });
+          videoEl.addEventListener('error', failed, { once: true });
+          if (videoEl.readyState >= 2) loaded();
+        });
+      }
+      if (generation !== cameraGeneration) throw new Error('Inicialização da câmera cancelada.');
+      let cancelPlay;
+      const cancelled = new Promise((_, reject) => {
+        cancelPlay = () => reject(new Error('Inicialização da câmera cancelada.'));
+      });
+      cameraAbort = cancelPlay;
+      try { await Promise.race([videoEl.play(), cancelled]); }
+      finally { if (cameraAbort === cancelPlay) cameraAbort = null; }
+      if (generation !== cameraGeneration) throw new Error('Inicialização da câmera cancelada.');
+      return stream;
+    } catch (error) {
+      if (cameraStream === stream) stopCamera(videoEl);
+      throw error;
+    }
+  })();
+  cameraPromise = pending;
+  try { return await pending; }
+  finally { if (cameraPromise === pending) cameraPromise = null; }
 }
 
-/** Uma cadeia de rAF por vez; mantém deduplicação, timestamps e intervalo original. */
-export function startDetectionLoop(videoEl, onResults) {
+/** Invalida solicitações pendentes e solta todas as trilhas antes de retirar o vídeo. */
+export function stopCamera(videoEl = cameraVideo) {
+  cameraGeneration++;
+  cameraAbort?.();
+  cameraAbort = null;
+  cameraPromise = null;
+  stopDetectionLoop();
+  const stream = cameraStream || videoEl?.srcObject;
+  cameraStream = null;
+  cameraVideo = null;
+  stream?.getTracks().forEach((track) => track.stop());
+  if (videoEl) {
+    videoEl.pause();
+    videoEl.srcObject = null;
+  }
+}
+
+/** Mantém um único rAF, métricas limitadas e recuperação de falhas por ciclo. */
+export function startDetectionLoop(videoEl, onResults, onError) {
   stopDetectionLoop();
   const generation = loopGeneration;
   const metricsSession = ++metricsGeneration;
-  lastProcessTime = 0;
-  lastVideoTime = -1;
   sampleIndex = sampleCount = processedFrames = callbacks = skippedUnchanged = skippedInterval = 0;
   const tick = (now) => {
     if (generation !== loopGeneration) return;
     rafId = null;
     callbacks++;
     // Só processa se o frame da câmera mudou E se já passou o intervalo de 50ms (20 FPS)
-    if (handLandmarker && videoEl.currentTime !== lastVideoTime && (now - lastProcessTime >= PROCESS_INTERVAL_MS)) {
+    if (handLandmarker && videoEl.readyState >= 2 && videoEl.currentTime !== lastVideoTime && (now - lastProcessTime >= PROCESS_INTERVAL_MS)) {
       lastProcessTime = now;
       lastVideoTime = videoEl.currentTime;
-
       const inferenceStart = performance.now();
-      const results = handLandmarker.detectForVideo(videoEl, now);
-      const inferenceEnd = performance.now();
-      const fps = recentFps(inferenceEnd) + 1;
-      const index = sampleIndex;
-      frameTimes[index] = inferenceEnd;
-      inferenceTimes[index] = inferenceEnd - inferenceStart;
-      consumerTimes[index] = cycleTimes[index] = 0;
-      sampleIndex = (sampleIndex + 1) % SAMPLE_LIMIT;
-      sampleCount = Math.min(sampleCount + 1, SAMPLE_LIMIT);
-      processedFrames++;
+      try {
+        const results = handLandmarker.detectForVideo(videoEl, now);
+        if (generation !== loopGeneration) return;
+        const inferenceEnd = performance.now();
+        const fps = recentFps(inferenceEnd) + 1;
+        const index = sampleIndex;
+        frameTimes[index] = inferenceEnd;
+        inferenceTimes[index] = inferenceEnd - inferenceStart;
+        consumerTimes[index] = cycleTimes[index] = 0;
+        sampleIndex = (sampleIndex + 1) % SAMPLE_LIMIT;
+        sampleCount = Math.min(sampleCount + 1, SAMPLE_LIMIT);
+        processedFrames++;
 
-      const consumerStart = performance.now();
-      onResults(results, fps);
-      // Parar finaliza a amostra; reiniciar não pode contaminar a nova sessão.
-      if (metricsSession !== metricsGeneration) return;
-      const consumerEnd = performance.now();
-      consumerTimes[index] = consumerEnd - consumerStart;
-      cycleTimes[index] = consumerEnd - inferenceStart;
-    } else if (handLandmarker) {
+        const consumerStart = performance.now();
+        try { onResults(results, fps); }
+        finally {
+          // Parar finaliza a amostra; reiniciar não contamina a nova sessão.
+          if (metricsSession === metricsGeneration) {
+            const consumerEnd = performance.now();
+            consumerTimes[index] = consumerEnd - consumerStart;
+            cycleTimes[index] = consumerEnd - inferenceStart;
+          }
+        }
+      } catch (error) {
+        if (generation === loopGeneration) {
+          stopDetectionLoop();
+          onError?.(error);
+        }
+        return;
+      }
+    } else if (handLandmarker && videoEl.readyState >= 2) {
       if (videoEl.currentTime === lastVideoTime) skippedUnchanged++;
       else skippedInterval++;
     }
@@ -164,6 +245,19 @@ export function stopDetectionLoop() {
   loopGeneration++;
   if (rafId !== null) cancelAnimationFrame(rafId);
   rafId = null;
+  lastProcessTime = 0;
+  lastVideoTime = -1;
+}
+
+/** Fecha o grafo WASM/GPU apenas no descarte da página ou em falha fatal. */
+export function disposeModel() {
+  modelGeneration++;
+  modelPromise = null;
+  stopDetectionLoop();
+  const model = handLandmarker;
+  handLandmarker = null;
+  try { model?.close(); }
+  catch (error) { console.error('Falha ao fechar o MediaPipe:', error); }
 }
 
 /** A primeira mão assume o papel lógico "right"; a lateralidade não é consultada. */

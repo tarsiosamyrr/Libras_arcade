@@ -59,12 +59,20 @@ export class Game extends EventTarget {
     this.hitsSinceLevelUp = 0; // acertos desde a última subida de nível
 
     this._timerId = null;
+    this._advanceId = null;
+    this._advanceAction = null;
+    this._advanceRemaining = 0;
+    this._advanceDueAt = 0;
+    this._paused = false;
+    this._resumeTimer = false;
     this.timeLeft = 0;
   }
 
   /* -------------------------------------------------------- practice --- */
   /** Inicia Treino com fila filtrada pela dificuldade; cada acerto agenda o próximo alvo. */
   startPractice(level = 1) {
+    this._clearActivity();
+    this._paused = false;
     this.mode = 'practice';
     this.level = level;
     this.score = 0;
@@ -91,6 +99,8 @@ export class Game extends EventTarget {
   /* ------------------------------------------------------------ word --- */
   /** Inicia Soletrar usando o banco do nível; o cronômetro é renovado por letra. */
   startWord(level = 1) {
+    this._clearActivity();
+    this._paused = false;
     this.mode = 'word';
     this.level = level;
     this.score = 0;
@@ -114,7 +124,7 @@ export class Game extends EventTarget {
   /* --------------------------------------------------- entrada do jogo --- */
   /** Chamado pela UI quando o LibrasEngine confirma uma letra sinalizada. */
   handleSign(letter) {
-    if (!this.mode) return;
+    if (!this.mode || this._paused || !this._timerId) return;
 
     const expected = this.mode === 'practice'
       ? this.target
@@ -140,7 +150,7 @@ export class Game extends EventTarget {
       this.dispatchEvent(new CustomEvent('correct', { detail: { ...this._snapshot(), gained } }));
       if (leveledUp) this.dispatchEvent(new CustomEvent('levelup', { detail: this._snapshot() }));
       this._stopTimer();
-      setTimeout(() => { if (this.mode === 'practice') this._nextPracticeTarget(); }, ADVANCE_DELAY_MS);
+      this._scheduleAdvance(() => { if (this.mode === 'practice') this._nextPracticeTarget(); }, ADVANCE_DELAY_MS);
     } else {
       this.wordIndex += 1;
       if (this.wordIndex >= this.target.length) {
@@ -149,7 +159,7 @@ export class Game extends EventTarget {
         this.dispatchEvent(new CustomEvent('wordcomplete', { detail: { ...this._snapshot(), bonus } }));
         if (leveledUp) this.dispatchEvent(new CustomEvent('levelup', { detail: this._snapshot() }));
         this._stopTimer();
-        setTimeout(() => { if (this.mode === 'word') this._nextWord(); }, ADVANCE_DELAY_MS);
+        this._scheduleAdvance(() => { if (this.mode === 'word') this._nextWord(); }, ADVANCE_DELAY_MS);
       } else {
         this.dispatchEvent(new CustomEvent('correct', { detail: { ...this._snapshot(), gained } }));
         if (leveledUp) this.dispatchEvent(new CustomEvent('levelup', { detail: this._snapshot() }));
@@ -184,6 +194,12 @@ export class Game extends EventTarget {
     this._stopTimer();
     this._roundMs = roundMsForLevel(this.level, this.mode);
     this.timeLeft = this._roundMs;
+    this._runTimer();
+  }
+
+  _runTimer() {
+    // Usa o tempo já restante após retomada; _startTimer é o único reset de rodada.
+    if (this._paused || !this.mode || this._timerId) return;
     const tickMs = 100;
     this._timerId = setInterval(() => {
       this.timeLeft -= tickMs;
@@ -193,7 +209,7 @@ export class Game extends EventTarget {
         this.streak = 0;
         const mode = this.mode;
         this.dispatchEvent(new CustomEvent('timeout', { detail: this._snapshot() }));
-        setTimeout(() => {
+        this._scheduleAdvance(() => {
           if (this.mode !== mode) return;
           if (mode === 'practice') this._nextPracticeTarget();
           else this._nextWord();
@@ -203,16 +219,68 @@ export class Game extends EventTarget {
   }
 
   _stopTimer() {
-    if (this._timerId) clearInterval(this._timerId);
+    if (this._timerId !== null) clearInterval(this._timerId);
     this._timerId = null;
   }
 
-  /* ------------------------------------------------------------- fim --- */
-  /** Encerra o intervalo e salva o recorde compartilhado por Treino/Soletrar.
-   * Os timeouts de avanço não são cancelados aqui: limitação registrada no roadmap.
-   */
-  end() {
+  /** Um único avanço pendente por rodada; pausa conserva somente o atraso restante. */
+  _scheduleAdvance(action, delay) {
+    this._clearAdvance();
+    this._advanceAction = action;
+    this._advanceRemaining = delay;
+    if (!this._paused) this._armAdvance();
+  }
+
+  _armAdvance() {
+    this._advanceDueAt = Date.now() + this._advanceRemaining;
+    this._advanceId = setTimeout(() => {
+      const action = this._advanceAction;
+      this._clearAdvance();
+      if (!this._paused) action?.();
+    }, this._advanceRemaining);
+  }
+
+  _clearAdvance() {
+    if (this._advanceId !== null) clearTimeout(this._advanceId);
+    this._advanceId = null;
+    this._advanceAction = null;
+    this._advanceRemaining = 0;
+  }
+
+  _clearActivity() {
     this._stopTimer();
+    this._clearAdvance();
+    this._resumeTimer = false;
+  }
+
+  /** Congela tanto o cronômetro quanto o feedback antes do próximo alvo. */
+  pause() {
+    if (this._paused) return;
+    this._paused = true;
+    const wasTiming = this._timerId !== null;
+    this._stopTimer();
+    this._resumeTimer = wasTiming;
+    if (this._advanceId !== null) {
+      this._advanceRemaining = Math.max(0, this._advanceDueAt - Date.now());
+      clearTimeout(this._advanceId);
+      this._advanceId = null;
+    }
+  }
+
+  /** Reativa apenas o trabalho que estava pendente antes da pausa. */
+  resume() {
+    if (!this._paused) return;
+    this._paused = false;
+    if (this._resumeTimer) this._runTimer();
+    this._resumeTimer = false;
+    if (this._advanceAction) this._armAdvance();
+  }
+
+  /* ------------------------------------------------------------- fim --- */
+  /** Cancela intervalo e avanço pendente; salva o recorde de Treino/Soletrar. */
+  end() {
+    this._clearActivity();
+    this._paused = false;
     if (this.score > this.best) {
       this.best = this.score;
       localStorage.setItem(BEST_KEY, String(this.best));

@@ -52,10 +52,17 @@ export class ForcaGame extends EventTarget {
     this.errors = 0;
     this.queue = [];
     this.status = 'idle';      // 'playing' | 'won' | 'lost'
+    this._paused = false;
+    this._advanceId = null;
+    this._advanceAction = null;
+    this._advanceRemaining = 0;
+    this._advanceDueAt = 0;
   }
 
   /** Inicia uma sessão sem cronômetro; cada palavra mantém seu conjunto de palpites. */
   start(level = 1) {
+    this._clearAdvance();
+    this._paused = false;
     this.level = level;
     this.score = 0;
     this.round = 0;
@@ -79,7 +86,7 @@ export class ForcaGame extends EventTarget {
 
   /** Chamado pela UI quando o LibrasEngine confirma uma letra sinalizada. */
   handleGuess(letter) {
-    if (this.status !== 'playing') return;
+    if (this.status !== 'playing' || this._paused) return;
 
     if (this.guessed.has(letter)) {
       this.dispatchEvent(new CustomEvent('repeated', { detail: { ...this._snapshot(), letter } }));
@@ -127,13 +134,55 @@ export class ForcaGame extends EventTarget {
     this.dispatchEvent(new CustomEvent('win', { detail: { ...this._snapshot(), bonus } }));
     if (leveledUp) this.dispatchEvent(new CustomEvent('levelup', { detail: this._snapshot() }));
 
-    setTimeout(() => { if (this.status === 'won') this._nextWord(); }, ADVANCE_DELAY_MS);
+    this._scheduleAdvance(() => { if (this.status === 'won') this._nextWord(); }, ADVANCE_DELAY_MS);
   }
 
   _onLose(letter) {
     this.status = 'lost';
     this.dispatchEvent(new CustomEvent('lose', { detail: { ...this._snapshot(), letter } }));
-    setTimeout(() => { if (this.status === 'lost') this._nextWord(); }, ADVANCE_DELAY_MS);
+    this._scheduleAdvance(() => { if (this.status === 'lost') this._nextWord(); }, ADVANCE_DELAY_MS);
+  }
+
+  /** Evita que um avanço antigo sobreviva à troca de modo ou à aba oculta. */
+  _scheduleAdvance(action, delay) {
+    this._clearAdvance();
+    this._advanceAction = action;
+    this._advanceRemaining = delay;
+    if (!this._paused) this._armAdvance();
+  }
+
+  _armAdvance() {
+    this._advanceDueAt = Date.now() + this._advanceRemaining;
+    this._advanceId = setTimeout(() => {
+      const action = this._advanceAction;
+      this._clearAdvance();
+      if (!this._paused) action?.();
+    }, this._advanceRemaining);
+  }
+
+  _clearAdvance() {
+    if (this._advanceId !== null) clearTimeout(this._advanceId);
+    this._advanceId = null;
+    this._advanceAction = null;
+    this._advanceRemaining = 0;
+  }
+
+  /** Conserva o tempo restante do feedback da palavra atual. */
+  pause() {
+    if (this._paused) return;
+    this._paused = true;
+    if (this._advanceId !== null) {
+      this._advanceRemaining = Math.max(0, this._advanceDueAt - Date.now());
+      clearTimeout(this._advanceId);
+      this._advanceId = null;
+    }
+  }
+
+  /** Retoma somente o avanço que existia antes de ocultar a aba. */
+  resume() {
+    if (!this._paused) return;
+    this._paused = false;
+    if (this._advanceAction) this._armAdvance();
   }
 
   /** Igual ao esquema de game.js: a cada WINS_PER_LEVEL_UP palavras vencidas,
@@ -158,8 +207,10 @@ export class ForcaGame extends EventTarget {
     }
   }
 
-  /** Salva o recorde da Forca e volta a idle; timeouts de rodada não são cancelados. */
+  /** Cancela o avanço pendente, salva o recorde e volta a idle. */
   end() {
+    this._clearAdvance();
+    this._paused = false;
     this._saveBestIfNeeded();
     this.dispatchEvent(new CustomEvent('sessionend', { detail: this._snapshot() }));
     this.status = 'idle';

@@ -24,7 +24,11 @@ async function runtime({ baseline = false, inferenceMs = 4, result = { landmarks
     setInterval: fn => { timers.set(++nextId, fn); return nextId; }, clearInterval: id => timers.delete(id),
     localStorage: { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) },
     window: { addEventListener: (type, fn) => events.set(type, fn) },
-    document: { getElementById: id => id === 'overlay' ? canvas : element }
+    document: {
+      hidden: false,
+      addEventListener: (type, fn) => events.set(type, fn),
+      getElementById: id => id === 'overlay' ? canvas : element
+    }
   });
   const remote = new vm.SyntheticModule(['HandLandmarker', 'FilesetResolver'], function () {
     this.setExport('HandLandmarker', { createFromOptions: async () => ({ detectForVideo(video, timestamp) {

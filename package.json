@@ -1,0 +1,9 @@
+{
+  "name": "libras-arcade",
+  "private": true,
+  "scripts": {
+    "test": "node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs",
+    "test:performance": "node --experimental-vm-modules --test tests/performance.test.cjs",
+    "test:camera": "node --test tests/phase02.test.mjs"
+  }
+}

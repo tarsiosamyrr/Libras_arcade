@@ -93,7 +93,7 @@ test('regressão de eventos nos três motores com sinais confirmados', async () 
 });
 
 test('respeita os limites exatos de 50 ms e 1.000 ms', async () => {
-  const r = await runtime({ inferenceMs: 0 }); const video = { currentTime: 1 };
+  const r = await runtime({ inferenceMs: 0 }); const video = { currentTime: 1, readyState: 2 };
   r.vision.startDetectionLoop(video, () => {});
   r.tick(49); assert.equal(r.calls.length, 0);
   r.tick(50); assert.equal(r.calls.length, 1);
@@ -102,7 +102,7 @@ test('respeita os limites exatos de 50 ms e 1.000 ms', async () => {
 });
 
 test('callback antigo não reativa cadeia após reinício; estatísticas são da nova sessão', async () => {
-  const r = await runtime(); const video = { currentTime: 1 };
+  const r = await runtime(); const video = { currentTime: 1, readyState: 2 };
   r.vision.startDetectionLoop(video, () => {});
   const old = [...r.frames.values()][0]; r.tick(100);
   r.vision.startDetectionLoop(video, () => {}); old(200);
@@ -115,7 +115,7 @@ test('estados, confirmações e cursor permanecem iguais para sequência sintét
   for (const baseline of [true, false]) {
     const result = { landmarks: [] };
     const r = await runtime({ baseline, result }); const engine = new r.libras.LibrasEngine();
-    const video = { currentTime: 0 }; const states = [], signs = [], nav = [];
+    const video = { currentTime: 0, readyState: 2 }; const states = [], signs = [], nav = [];
     engine.addEventListener('signconfirmed', e => signs.push(e.detail.letter));
     engine.addEventListener('navback', () => nav.push(r.calls.length));
     r.vision.startDetectionLoop(video, (detected, fps) => {
