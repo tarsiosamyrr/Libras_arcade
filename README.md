@@ -137,7 +137,7 @@ Falhas de permissão, câmera ausente ou ocupada e erros de inferência mostram 
 
 ## Testes e validação
 
-Os testes focados das FASES 01 e 02 usam o runner nativo do Node. A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
+Os testes focados das FASES 01, 02 e 02.1 usam o runner nativo do Node. A suíte atual contém **50 testes**: métricas/regressão, persistência e motores, além de integração simulada do boot, navegação e ciclo de vida de `app.js`/`ui.js`. A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
 
 ```powershell
 npm test
@@ -151,9 +151,10 @@ Sem npm, os comandos equivalentes são:
 node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs
 node --experimental-vm-modules --test tests/performance.test.cjs
 node --test tests/phase02.test.mjs
+node --experimental-vm-modules --test tests/app-ui.integration.test.cjs
 ```
 
-`tests/performance.test.cjs` usa `vm.SyntheticModule` e `vm.SourceTextModule`, indisponíveis no Node 24.18.0 sem `--experimental-vm-modules`. Por isso a suíte completa e a FASE 01 usam a flag; os testes da FASE 02/02.1 rodam sem ela. Os testes cobrem FPS/latências, buffer, agendamento, Canvas, eventos dos três jogos, ciclo de câmera/modelo, pausa/retomada, falhas de armazenamento, estatísticas entre sessões e comparação sintética com a base. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
+`tests/performance.test.cjs` e a integração de `tests/app-ui.integration.test.cjs` usam `vm.SyntheticModule`/`vm.SourceTextModule`, indisponíveis no Node 24.18.0 sem `--experimental-vm-modules`; por isso `test` e `test:camera` incluem a flag. O harness testa módulos reais com DOM, relógio, câmera e MediaPipe simulados; não comprova compatibilidade de navegador, webcam física, permissões do sistema ou execução real de GPU/WASM. A validação com webcam real não foi executada. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
 
 Precisão por webcam, navegação completa, acessibilidade e compatibilidade entre navegadores permanecem sem homologação. O benchmark sem mãos não mede a precisão das letras; os demais achados da auditoria seguem no roadmap.
 

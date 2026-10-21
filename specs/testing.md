@@ -2,13 +2,15 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
-## Verificação atual — FASE 02.1 sobre `fb22e89`
+## Verificação atual — integração simulada de `app.js`/`ui.js`
 
-Em 21/10/2026, `npm.cmd test` passou com 34/34 testes: os 25 da integração anterior e 9 novos da FASE 02.1. Os novos testes foram executados antes das correções: 7 falharam pelos defeitos reproduzidos; 2 verificam comportamentos preservados. O comando `npm.cmd run test:camera` passou com 21/21 testes. `npm.ps1` está bloqueado pela política de execução local do PowerShell; `npm.cmd` executa os mesmos scripts. O aviso `ExperimentalWarning` do Node permanece esperado.
+Em 21/10/2026, após fechar a lacuna A-2 no harness de testes, `npm.cmd test` passou com **50/50 testes**: 13 de performance, 21 da FASE 02/02.1 e 16 novos testes de integração simulada. `npm.cmd run test:performance` passou com 13/13; `npm.cmd run test:camera` passou com 37/37 (21 anteriores + 16 de integração). Sintaxe dos módulos, `git diff --check` e `git diff --cached --check` também passaram. `npm.ps1` pode ser bloqueado pela política de execução local do PowerShell; `npm.cmd` executa os scripts. O aviso `ExperimentalWarning` do Node permanece esperado.
 
-A integração anterior foi verificada com Node `v24.18.0` e PowerShell; esta é a versão mais antiga efetivamente testada, sem ensaio em versões anteriores. Naquela integração, a suíte conjunta passou com 25/25 testes com `--experimental-vm-modules`. Sem a flag, `require('node:vm').SyntheticModule` retorna `undefined` no Node 24.18.0.
+A integração usa os módulos reais carregados por `vm.SourceTextModule`, com DOM/event targets, relógio, rAF, câmera e MediaPipe simulados. Testa o boot disparado pelos controles reais do harness, telas de falha/retry, visibilidade, `pagehide`/restauração, desconexão, erros no detector/consumidor, navegação dos três modos, eventos de confirmação, resultados, persistência indisponível e ausência de listeners/loops duplicados. O harness não implementa layout, propagação completa de eventos nem MediaPipe/GPU reais.
 
-O `package.json` padroniza os comandos sem dependências instaláveis nem mudança no runtime web. A flag aparece apenas na suíte completa e na FASE 01, que usa `vm.SyntheticModule`/`vm.SourceTextModule` em `tests/helpers/runtime.cjs`; a FASE 02 não precisa dela. Edge `155.0.4283.62` e Playwright pertencem à medição histórica da FASE 01; a integração não foi medida com navegador/webcam real. A suíte focada não substitui a futura FASE 05.
+Os testes dividem-se em: (1) unitários de motores/métricas e persistência; (2) integração simulada de `app.js`, `ui.js`, `vision.js` e motores, adicionada no fechamento A-2; (3) validação com webcam/navegador real, que não foi executada nesta entrega. Portanto, mensagens/fluxos são verificados sob as respostas controladas dos mocks, não em dispositivos ou navegadores reais. A versão mais antiga efetivamente testada é Node `v24.18.0`; versões anteriores não foram ensaiadas. Os testes diferenciais requerem que o commit-base referenciado no teste esteja disponível no histórico Git local.
+
+O `package.json` inclui a nova suíte de integração em `test` e `test:camera`; esta última e a suíte completa usam `--experimental-vm-modules`. A FASE 01 depende de `vm.SyntheticModule`/`vm.SourceTextModule`; sem a flag, estas APIs não estão disponíveis no Node 24.18.0. Edge `155.0.4283.62` e Playwright pertencem à medição histórica da FASE 01; esta integração não foi medida com navegador/webcam real. Não há dependências instaláveis, CI, lint, typecheck ou build versionados.
 
 Os testes diferenciais da FASE 01 chamam `git show 9063154:...`; esse commit precisa estar disponível no histórico local, inclusive em uma futura execução de CI. Os testes sintéticos não medem CPU/RAM total nem validam reconhecimento com webcam.
 
@@ -17,7 +19,7 @@ npm test
 npm run test:performance
 npm run test:camera
 # Equivalente direto da suíte conjunta:
-node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs
+node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs tests/app-ui.integration.test.cjs
 Get-ChildItem -LiteralPath js -Filter *.js | ForEach-Object {
     node --check $_.FullName
     if ($LASTEXITCODE -ne 0) { throw "Falha de sintaxe: $($_.Name)" }
@@ -28,7 +30,8 @@ git diff --cached --check
 
 - FASE 01: 13 testes de FPS e limites de 50/1.000 ms; durações separadas; buffer de 120 amostras; vídeo repetido; início/parada/reinício; desenho e limpeza; três motores; comparação com a base para estados, cursor, confirmações, hold, J/Z e navegação sintéticos. A fixture de DOM e três vídeos sintéticos foram adaptados para o controle de visibilidade e `readyState` da FASE 02.
 - FASE 02: 12 testes de inicialização compartilhada, cancelamento de modelo/câmera, falha de reprodução, loop único, reinício de métricas após reabrir a câmera, erros do detector/consumidor, limpeza de gestos e pausa/cancelamento de avanços nos jogos. Usam substitutos locais e não validam hardware real.
-- FASE 02.1: 9 testes novos em `tests/phase02.test.mjs` cobrem exceções de `getItem()`/`setItem()`, `QuotaExceededError`, avisos de armazenamento, recorde em memória, reconciliação com valor persistido, nova tentativa após falha temporária, saída manual para o menu, `sessionend`, reinício de `bestStreak`, resultados de Treino/Soletrar/Forca e persistência normal. Usam os motores e métodos reais da UI com DOM/armazenamento substitutos; não executam o boot com webcam nem validam mensagens da tela de erro da câmera diretamente.
+- FASE 02.1: 9 testes novos em `tests/phase02.test.mjs` cobrem exceções de `getItem()`/`setItem()`, `QuotaExceededError`, avisos de armazenamento, recorde em memória, reconciliação com valor persistido, nova tentativa após falha temporária, saída manual para o menu, `sessionend`, reinício de `bestStreak`, resultados de Treino/Soletrar/Forca e persistência normal. Usam os motores e métodos reais da UI com DOM/armazenamento substitutos.
+- Fechamento A-2: 16 testes em `tests/app-ui.integration.test.cjs` e `tests/helpers/browser-runtime.cjs`. Avaliam o grafo real de módulos em VM com elementos DOM e listeners reais do harness, além de APIs remotas/hardware simuladas. Incluem boot e retry, permissão negada, suspensão/retomada, descarte/restauração, cancelamento de inicialização pendente, desconexão da câmera, falhas de detecção/consumo, navegação e saída dos três modos, eventos `signconfirmed`, resultados, recuperação do armazenamento e contagem de listeners/loops. Não substituem navegador ou webcam real.
 - Histórico da FASE 01: implementação anterior apresentou 7 falhas em 9 testes; a implementação passou. A revisão identificou duração zerada quando o consumidor parava o loop; teste ampliado falhou e passou após correção. A fixture inicial de navegação não atingia o deslocamento mínimo; foi ajustada sem mudar a regra do jogo.
 - Mocks substituem relógio, DOM mínimo, timers, storage e import remoto na VM; os módulos da aplicação são reais. Desenho compara a sequência de operações, não apenas quantidade de chamadas. Testes diferenciais leem o commit-base pelo Git.
 - Benchmark separado usa MediaPipe real, GPU e UI no navegador com vídeo gerado sem pessoas. Scripts, parâmetros, resultados brutos, regressões de eventos/DOM e limitações estão no [relatório da FASE 01](../docs/performance/FASE01.md).
