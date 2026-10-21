@@ -2,7 +2,7 @@
 
 Jogo educacional de datilologia em Libras, desenvolvido no contexto de uma Liga de Inteligência Artificial. A webcam fornece landmarks da mão para um classificador geométrico executado no navegador, que alimenta os modos **Treino, Soletrar e Forca**.
 
-Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01 e o ciclo de vida da câmera da FASE 02. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
+Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02 e as correções de armazenamento e estatísticas da FASE 02.1. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
 
 Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arcade).
 
@@ -14,7 +14,7 @@ Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arca
 | Soletrar | Sorteia uma palavra e recebe suas letras em ordem. O cronômetro é por letra; completar a palavra acrescenta bônus. | Sobe um nível a cada 5 letras corretas, até o nível 5. |
 | Forca | Sorteia palavra e dica. Cada palpite correto revela todas as ocorrências; repetidos não acrescentam erros. Com 6 erros, perde-se a rodada. Não há cronômetro. | Sobe um nível a cada 3 palavras vencidas, até o nível 5. |
 
-O menu permite escolher os níveis iniciais 1, 2 e 3; os níveis 4 e 5 são alcançados pela progressão. Treino e Soletrar compartilham um recorde local; a Forca mantém outro. Não há limite de rodadas para encerrar automaticamente a sessão. Após vitória/derrota na Forca, uma nova palavra começa após 1,6 s; no Treino e ao concluir uma palavra, a pausa de avanço é de 450 ms.
+O menu permite escolher os níveis iniciais 1, 2 e 3; os níveis 4 e 5 são alcançados pela progressão. Treino e Soletrar compartilham um recorde local; a Forca mantém outro. A melhor sequência de Treino/Soletrar e as vitórias da Forca pertencem à sessão atual. Não há limite de rodadas para encerrar automaticamente a sessão. Após vitória/derrota na Forca, uma nova palavra começa após 1,6 s; no Treino e ao concluir uma palavra, a pausa de avanço é de 450 ms.
 
 ## Como executar
 
@@ -102,7 +102,7 @@ O detalhamento de dependências, eventos e recursos está em [specs/system.md](s
 | Modelo `hand_landmarker/float16/1` | Download de `storage.googleapis.com` durante o boot. |
 | Canvas, `requestAnimationFrame`, eventos nativos | Desenho, agendamento e comunicação entre módulos. |
 | Google Fonts | Rajdhani e Share Tech Mono importadas pelo HTML. |
-| `localStorage` | Recordes de pontuação; não armazena imagens ou landmarks no código auditado. |
+| `localStorage` | Recordes de pontuação, quando disponível; não armazena imagens ou landmarks. |
 
 ## Performance e diagnóstico
 
@@ -129,6 +129,8 @@ No código auditado, imagens e landmarks são processados no navegador, sem roti
 
 Os únicos dados persistidos pela aplicação são os recordes nas chaves `libras-arcade:best-score` e `libras-arcade:best-score-forca`. O nome informado apenas atualiza o HUD no fluxo existente.
 
+Se o armazenamento local falhar, os jogos continuam e o recorde permanece em memória enquanto a página estiver aberta. A falha é registrada no console. No próximo fim de sessão (Treino/Soletrar) ou vitória/fim (Forca), o jogo tenta ler e salvar o maior recorde novamente. Um recorde ainda não salvo pode ser perdido ao fechar ou recarregar a página.
+
 Sair de uma rodada volta ao menu e mantém a câmera ativa para navegação por gesto. Ao ocultar a aba, a aplicação pausa inferência e rodada, interrompe as trilhas de vídeo e limpa gestos incompletos. Ao voltar, solicita a câmera novamente e retoma o tempo restante. Em `pagehide`, fecha o modelo; uma restauração pelo cache do navegador o carrega novamente.
 
 Falhas de permissão, câmera ausente ou ocupada e erros de inferência mostram uma tela com **TENTAR NOVAMENTE**. A abertura da câmera aguarda dados do vídeo e a promessa de `play()`, com limite de 10 s para dados iniciais. Confira conexão, origem local/HTTPS, permissão e disponibilidade da webcam. Falhas no import remoto ainda podem ocorrer antes do tratamento do aplicativo; não há fallback de GPU para CPU. As decisões e os cenários manuais estão em [Fase 02 — câmera e recursos](docs/fase-02-camera-recursos.md).
@@ -151,7 +153,7 @@ node --experimental-vm-modules --test tests/performance.test.cjs
 node --test tests/phase02.test.mjs
 ```
 
-`tests/performance.test.cjs` usa `vm.SyntheticModule` e `vm.SourceTextModule`, indisponíveis no Node 24.18.0 sem `--experimental-vm-modules`. Por isso a suíte completa e a FASE 01 usam a flag; a FASE 02 roda sem ela. Os testes cobrem FPS/latências, buffer, agendamento, Canvas, eventos dos três jogos, ciclo de câmera/modelo, pausa/retomada e comparação sintética com a base. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
+`tests/performance.test.cjs` usa `vm.SyntheticModule` e `vm.SourceTextModule`, indisponíveis no Node 24.18.0 sem `--experimental-vm-modules`. Por isso a suíte completa e a FASE 01 usam a flag; os testes da FASE 02/02.1 rodam sem ela. Os testes cobrem FPS/latências, buffer, agendamento, Canvas, eventos dos três jogos, ciclo de câmera/modelo, pausa/retomada, falhas de armazenamento, estatísticas entre sessões e comparação sintética com a base. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
 
 Precisão por webcam, navegação completa, acessibilidade e compatibilidade entre navegadores permanecem sem homologação. O benchmark sem mãos não mede a precisão das letras; os demais achados da auditoria seguem no roadmap.
 

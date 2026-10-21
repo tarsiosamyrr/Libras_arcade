@@ -1,6 +1,6 @@
 # Sistema implementado
 
-**Última inspeção:** 21/10/2026. **Referência:** integração no diretório de trabalho de `2e1f937` com `535f33f`, com cherry-pick ainda pendente de conclusão.
+**Última inspeção:** 21/10/2026. **Referência:** FASE 02.1 sobre `fb22e89` na branch `integracao/fase-02-camera`.
 
 ## Unidade executável e dependências
 
@@ -53,15 +53,15 @@ J/Z acumulam posições de ponta normalizadas pela escala da mão. Janela 1.300 
 
 `Game.mode` é `null`, `practice` ou `word`. Partidas usam filas embaralhadas; Treino filtra letras pela dificuldade e Soletrar escolhe o banco do nível. Cada acerto dá `round(10 × (1 + min(4, floor(streak/3)) × 0.25))`; palavra completa acrescenta `20 + 5 × tamanho`. A cada 5 letras corretas sobe o nível até 5 e esvazia a fila.
 
-O tempo por letra é `max(6000, 12000 - (nível - 1) × 700)` ms, com 2.500 ms extras no Soletrar. Um intervalo subtrai 100 ms por callback. Erro zera sequência sem trocar imediatamente o alvo; timeout zera sequência e agenda outro alvo/palavra. Acerto no Treino e palavra completa agendam avanço de 450 ms. `pause()` congela intervalo e avanço pendente; `end()` cancela ambos, salva recorde, emite `sessionend` e põe `mode = null`.
+O tempo por letra é `max(6000, 12000 - (nível - 1) × 700)` ms, com 2.500 ms extras no Soletrar. Um intervalo subtrai 100 ms por callback. Erro zera sequência sem trocar imediatamente o alvo; timeout zera sequência e agenda outro alvo/palavra. Acerto no Treino e palavra completa agendam avanço de 450 ms. `bestStreak` zera em cada `startPractice()`/`startWord()` e representa apenas a sessão corrente. `pause()` congela intervalo e avanço pendente; `end()` cancela ambos, tenta salvar o recorde, emite `sessionend` e põe `mode = null` mesmo se o armazenamento falhar.
 
-`ForcaGame.status` passa entre `idle`, `playing`, `won`, `lost`. Um `Set` evita repetir palpite. Cada ocorrência correta dá 10 pontos; vitória acrescenta `max(10, 30 + tamanho × 5 - erros × 5)`. Seis erros encerram a rodada; vitória/derrota agendam palavra nova em 1.600 ms, com atraso conservado na pausa. Três vitórias sobem um nível até 5. `end()` cancela o avanço, salva recorde, emite `sessionend` e define `idle`.
+`ForcaGame.status` passa entre `idle`, `playing`, `won`, `lost`. Um `Set` evita repetir palpite. Cada ocorrência correta dá 10 pontos; vitória acrescenta `max(10, 30 + tamanho × 5 - erros × 5)`. Seis erros encerram a rodada; vitória/derrota agendam palavra nova em 1.600 ms, com atraso conservado na pausa. Três vitórias sobem um nível até 5; `wins` zera em cada `start()`. `end()` cancela o avanço, tenta salvar o recorde, emite `sessionend` e define `idle` mesmo se o armazenamento falhar.
 
 Não há término automático da sessão por número de rodadas. A saída manual da UI usa `_exitingManually` para suprimir resultados e retornar ao menu. Essa navegação não encerra webcam/inferência.
 
 ## Persistência e recursos
 
-- `localStorage`: `libras-arcade:best-score` compartilhado por Treino/Soletrar e `libras-arcade:best-score-forca`. Sem proteção a erros de armazenamento.
+- `localStorage`: `libras-arcade:best-score` compartilhado por Treino/Soletrar e `libras-arcade:best-score-forca`. Leitura/escrita com tratamento de exceção e aviso no console. Cada motor conserva o maior recorde em memória, compara com o valor persistido antes de escrever e tenta novamente no próximo ponto normal de persistência: fim de sessão em Treino/Soletrar; vitória ou fim na Forca. Enquanto a leitura falhar, não grava para evitar sobrescrever um recorde persistido maior. Memória não sobrevive a recarga da página.
 - Nome do jogador: atualização de texto do HUD; sem cadastro, histórico ou ranking persistente implementado.
 - Câmera: `vision.js` possui o stream, interrompe todas as tracks e retira `srcObject` na pausa/erro/`pagehide`. A câmera permanece ativa ao sair da rodada para permitir gestos no menu.
 - Modelo: referência de módulo compartilhada entre tentativas e fechada em `pagehide`; carregamento tardio após descarte é invalidado. rAF: uma cadeia em `vision.js`, parada ao ocultar a aba ou diante de erro; callbacks antigos não a rearmam.

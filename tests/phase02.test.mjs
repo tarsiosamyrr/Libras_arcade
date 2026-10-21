@@ -16,6 +16,10 @@ const forcaSource = (await readFile(new URL('../js/forca.js', import.meta.url), 
   .replace('from "./data.js"', `from "${dataUrl}"`);
 const { Game } = await import(asModule(gameSource));
 const { ForcaGame } = await import(asModule(forcaSource));
+const uiSource = (await readFile(new URL('../js/ui.js', import.meta.url), 'utf8'))
+  .replace('from "./data.js"', `from "${dataUrl}"`)
+  .replace('import { MOTION_LETTERS } from "./libras.js";', 'const MOTION_LETTERS = [];');
+const { UI } = await import(asModule(uiSource));
 const librasSource = (await readFile(new URL('../js/libras.js', import.meta.url), 'utf8'))
   .replace('import { LM, splitHandsByRole } from "./vision.js";',
     'const LM = {}; const splitHandsByRole = () => ({ left: null, right: null });');
@@ -241,4 +245,229 @@ test('forca pending advance is cancelled by end and held while paused', async (t
   forca.end();
   t.mock.timers.tick(2000);
   assert.equal(forca.round, round + 1);
+});
+
+function withStorage(t, storage) {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const previous = globalThis.localStorage;
+  globalThis.localStorage = storage;
+  t.after(() => { globalThis.localStorage = previous; });
+}
+
+function resultsUi(t, game, forca, screen) {
+  const previous = globalThis.document;
+  const elements = new Map();
+  const element = (selector) => {
+    if (!elements.has(selector)) {
+      const classes = new Set();
+      elements.set(selector, {
+        textContent: '',
+        classList: {
+          toggle(name, active) { if (active) classes.add(name); else classes.delete(name); },
+          contains: (name) => classes.has(name)
+        }
+      });
+    }
+    return elements.get(selector);
+  };
+  globalThis.document = { querySelector: element };
+  t.after(() => { globalThis.document = previous; });
+  const ui = Object.create(UI.prototype);
+  Object.assign(ui, {
+    game, forca, currentScreen: screen, _exitingManually: false,
+    libras: { resetTracking() {} },
+    homeEl: element('#home'), playEl: element('#play'),
+    forcaPlayEl: element('#forca-play'), resultsEl: element('#results'),
+    exitBtn: element('#exit-btn'), hintEl: element('#hint-text')
+  });
+  ui._bindGameEvents();
+  ui._bindForcaEvents();
+  return { ui, element };
+}
+
+test('getItem failure does not prevent creating and ending either game', (t) => {
+  withStorage(t, { getItem() { throw new Error('storage blocked'); }, setItem() {} });
+  const warnings = [];
+  t.mock.method(console, 'warn', (...args) => warnings.push(args));
+  const game = new Game();
+  const forca = new ForcaGame();
+  let gameEnds = 0;
+  let forcaEnds = 0;
+  game.addEventListener('sessionend', () => gameEnds++);
+  forca.addEventListener('sessionend', () => forcaEnds++);
+  game.startPractice();
+  forca.start();
+  game.end();
+  forca.end();
+  assert.equal(game.mode, null);
+  assert.equal(forca.status, 'idle');
+  assert.equal(gameEnds, 1);
+  assert.equal(forcaEnds, 1);
+  assert.ok(warnings.length >= 2);
+});
+
+test('QuotaExceededError keeps the game record in memory and still emits sessionend', (t) => {
+  const saved = new Map([['libras-arcade:best-score', '5']]);
+  withStorage(t, {
+    getItem: (key) => saved.get(key) ?? null,
+    setItem() { throw new DOMException('Quota exceeded', 'QuotaExceededError'); }
+  });
+  const warnings = [];
+  t.mock.method(console, 'warn', (...args) => warnings.push(args));
+  const game = new Game();
+  let detail;
+  game.addEventListener('sessionend', (event) => { detail = event.detail; });
+  game.startPractice();
+  game.handleSign(game.target);
+  game.end();
+  assert.equal(game.best, 10);
+  assert.equal(detail.best, 10);
+  assert.equal(game.mode, null);
+  assert.equal(saved.get('libras-arcade:best-score'), '5');
+  assert.equal(warnings[0][1].name, 'QuotaExceededError');
+  assert.match(warnings[0][0], /recorde/);
+  assert.doesNotMatch(warnings[0][0], /câmera/);
+});
+
+test('a later session retries a failed record write without losing the higher value', (t) => {
+  const saved = new Map();
+  let blocked = true;
+  withStorage(t, {
+    getItem: (key) => saved.get(key) ?? null,
+    setItem: (key, value) => { if (blocked) throw new Error('temporarily blocked'); saved.set(key, value); }
+  });
+  t.mock.method(console, 'warn', () => {});
+  const game = new Game();
+  game.startPractice();
+  game.handleSign(game.target);
+  game.end();
+  assert.equal(game.best, 10);
+  assert.equal(saved.size, 0);
+  blocked = false;
+  game.startWord();
+  game.end();
+  assert.equal(saved.get('libras-arcade:best-score'), '10');
+  assert.equal(game.best, 10);
+});
+
+test('a recovered read merges the stored record before a pending write', (t) => {
+  const saved = new Map([['libras-arcade:best-score', '100']]);
+  let blocked = true;
+  withStorage(t, {
+    getItem: (key) => { if (blocked) throw new Error('read blocked'); return saved.get(key) ?? null; },
+    setItem: (key, value) => saved.set(key, value)
+  });
+  t.mock.method(console, 'warn', () => {});
+  const game = new Game();
+  game.startPractice();
+  game.handleSign(game.target);
+  game.end();
+  assert.equal(game.best, 10);
+  blocked = false;
+  game.startPractice();
+  game.end();
+  assert.equal(game.best, 100);
+  assert.equal(saved.get('libras-arcade:best-score'), '100');
+});
+
+test('forca continues after failed setItem and retries on end', (t) => {
+  const saved = new Map();
+  let blocked = true;
+  withStorage(t, {
+    getItem: (key) => saved.get(key) ?? null,
+    setItem: (key, value) => { if (blocked) throw new Error('write blocked'); saved.set(key, value); }
+  });
+  const warnings = [];
+  t.mock.method(console, 'warn', (...args) => warnings.push(args));
+  const forca = new ForcaGame();
+  let wins = 0;
+  let ends = 0;
+  forca.addEventListener('win', () => wins++);
+  forca.addEventListener('sessionend', () => ends++);
+  forca.start();
+  forca._onWin();
+  assert.equal(wins, 1);
+  assert.ok(forca.best > 0);
+  assert.equal(saved.size, 0);
+  t.mock.timers.tick(1600);
+  assert.equal(forca.round, 2);
+  blocked = false;
+  forca.end();
+  assert.equal(ends, 1);
+  assert.equal(forca.status, 'idle');
+  assert.equal(saved.get('libras-arcade:best-score-forca'), String(forca.best));
+  assert.match(warnings[0][0], /recorde da Forca/);
+});
+
+test('working storage preserves both independent records across instances', (t) => {
+  const saved = new Map();
+  withStorage(t, {
+    getItem: (key) => saved.get(key) ?? null,
+    setItem: (key, value) => saved.set(key, value)
+  });
+  const game = new Game();
+  game.startPractice();
+  game.handleSign(game.target);
+  game.end();
+  const forca = new ForcaGame();
+  forca.start();
+  for (const letter of new Set(forca.word)) forca.handleGuess(letter);
+  forca.end();
+  assert.equal(saved.get('libras-arcade:best-score'), '10');
+  assert.equal(saved.get('libras-arcade:best-score-forca'), String(forca.best));
+  assert.equal(new Game().best, 10);
+  assert.equal(new ForcaGame().best, forca.best);
+});
+
+test('manual exit reaches the menu with storage unavailable in all three modes', (t) => {
+  withStorage(t, { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } });
+  t.mock.method(console, 'warn', () => {});
+  for (const mode of ['practice', 'word', 'forca']) {
+    const game = new Game();
+    const forca = new ForcaGame();
+    if (mode === 'practice') game.startPractice();
+    else if (mode === 'word') game.startWord();
+    else forca.start();
+    const { ui } = resultsUi(t, game, forca, mode === 'forca' ? 'forca-play' : 'play');
+    if (mode !== 'forca') game.handleSign(game.mode === 'practice' ? game.target : game.target[0]);
+    else forca._onWin();
+    ui.exitToHome();
+    assert.equal(ui.currentScreen, 'home');
+    assert.equal(ui._exitingManually, false);
+    assert.equal(game.mode, null);
+    assert.equal(forca.status, 'idle');
+  }
+});
+
+test('bestStreak and results belong to the newly started practice or word session', (t) => {
+  withStorage(t, { getItem: () => null, setItem() {} });
+  for (const mode of ['word', 'practice']) {
+    const game = new Game();
+    const forca = new ForcaGame();
+    if (mode === 'word') game.startPractice();
+    else game.startWord();
+    game.handleSign(mode === 'word' ? game.target : game.target[0]);
+    game.end();
+    if (mode === 'word') game.startWord();
+    else game.startPractice();
+    assert.equal(game.bestStreak, 0);
+    const { ui, element } = resultsUi(t, game, forca, 'play');
+    game.end();
+    assert.equal(ui.currentScreen, 'results');
+    assert.equal(element('#results-streak').textContent, 0);
+  }
+});
+
+test('forca results show wins from the current session', (t) => {
+  withStorage(t, { getItem: () => null, setItem() {} });
+  const game = new Game();
+  const forca = new ForcaGame();
+  forca.start();
+  forca._onWin();
+  forca.end();
+  forca.start();
+  const { ui, element } = resultsUi(t, game, forca, 'forca-play');
+  forca.end();
+  assert.equal(ui.currentScreen, 'results');
+  assert.equal(element('#results-streak').textContent, 0);
 });

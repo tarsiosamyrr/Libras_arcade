@@ -2,9 +2,11 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
-## Verificação atual — integração das FASES 01 e 02
+## Verificação atual — FASE 02.1 sobre `fb22e89`
 
-Integração verificada em 21/10/2026 com Node `v24.18.0` e PowerShell. Esta é a versão mais antiga efetivamente testada nesta integração; não houve ensaio em versões anteriores. Sem `--experimental-vm-modules`, `require('node:vm').SyntheticModule` retorna `undefined` e a suíte conjunta termina com 13 falhas da FASE 01 e 12 aprovações da FASE 02. Com a flag, `SyntheticModule` é uma função e a suíte conjunta passa com 25/25 testes. O aviso `ExperimentalWarning` do Node permanece esperado.
+Em 21/10/2026, `npm.cmd test` passou com 34/34 testes: os 25 da integração anterior e 9 novos da FASE 02.1. Os novos testes foram executados antes das correções: 7 falharam pelos defeitos reproduzidos; 2 verificam comportamentos preservados. O comando `npm.cmd run test:camera` passou com 21/21 testes. `npm.ps1` está bloqueado pela política de execução local do PowerShell; `npm.cmd` executa os mesmos scripts. O aviso `ExperimentalWarning` do Node permanece esperado.
+
+A integração anterior foi verificada com Node `v24.18.0` e PowerShell; esta é a versão mais antiga efetivamente testada, sem ensaio em versões anteriores. Naquela integração, a suíte conjunta passou com 25/25 testes com `--experimental-vm-modules`. Sem a flag, `require('node:vm').SyntheticModule` retorna `undefined` no Node 24.18.0.
 
 O `package.json` padroniza os comandos sem dependências instaláveis nem mudança no runtime web. A flag aparece apenas na suíte completa e na FASE 01, que usa `vm.SyntheticModule`/`vm.SourceTextModule` em `tests/helpers/runtime.cjs`; a FASE 02 não precisa dela. Edge `155.0.4283.62` e Playwright pertencem à medição histórica da FASE 01; a integração não foi medida com navegador/webcam real. A suíte focada não substitui a futura FASE 05.
 
@@ -26,6 +28,7 @@ git diff --cached --check
 
 - FASE 01: 13 testes de FPS e limites de 50/1.000 ms; durações separadas; buffer de 120 amostras; vídeo repetido; início/parada/reinício; desenho e limpeza; três motores; comparação com a base para estados, cursor, confirmações, hold, J/Z e navegação sintéticos. A fixture de DOM e três vídeos sintéticos foram adaptados para o controle de visibilidade e `readyState` da FASE 02.
 - FASE 02: 12 testes de inicialização compartilhada, cancelamento de modelo/câmera, falha de reprodução, loop único, reinício de métricas após reabrir a câmera, erros do detector/consumidor, limpeza de gestos e pausa/cancelamento de avanços nos jogos. Usam substitutos locais e não validam hardware real.
+- FASE 02.1: 9 testes novos em `tests/phase02.test.mjs` cobrem exceções de `getItem()`/`setItem()`, `QuotaExceededError`, avisos de armazenamento, recorde em memória, reconciliação com valor persistido, nova tentativa após falha temporária, saída manual para o menu, `sessionend`, reinício de `bestStreak`, resultados de Treino/Soletrar/Forca e persistência normal. Usam os motores e métodos reais da UI com DOM/armazenamento substitutos; não executam o boot com webcam nem validam mensagens da tela de erro da câmera diretamente.
 - Histórico da FASE 01: implementação anterior apresentou 7 falhas em 9 testes; a implementação passou. A revisão identificou duração zerada quando o consumidor parava o loop; teste ampliado falhou e passou após correção. A fixture inicial de navegação não atingia o deslocamento mínimo; foi ajustada sem mudar a regra do jogo.
 - Mocks substituem relógio, DOM mínimo, timers, storage e import remoto na VM; os módulos da aplicação são reais. Desenho compara a sequência de operações, não apenas quantidade de chamadas. Testes diferenciais leem o commit-base pelo Git.
 - Benchmark separado usa MediaPipe real, GPU e UI no navegador com vídeo gerado sem pessoas. Scripts, parâmetros, resultados brutos, regressões de eventos/DOM e limitações estão no [relatório da FASE 01](../docs/performance/FASE01.md).
@@ -41,7 +44,7 @@ O repositório não possui suíte de testes, CI, `package.json`, lint, typecheck
 | Ausência de mudança funcional | Acorn interno do Node, `node --expose-internals -`, comparação de AST com a base | Sete ASTs iguais, ignorando posições. HTML/CSS comparados sem comentários e com CRLF normalizado. |
 | Dados | `node --experimental-vm-modules -`, módulos reais e substituição apenas do import remoto | 24 regras estáticas + J/Z, 26 letras únicas, 90 palavras sem caracteres fora do pool e sem dicas ausentes. |
 | Motores | Mesmo ambiente VM, storage em memória e timers controlados | Treino: acerto dá 10 pontos; Soletrar: palavra soma bônus; Forca: repetição não duplica pontos, vitória e derrota com 6 erros. Não valida interface ou reconhecimento real. |
-| Diagnóstico | Relógio/callbacks e features sintéticas | Reproduzidos FPS falso, loop interrompido por exceção, avanço por callback antigo, `bestStreak` herdado e empate I/Y. Os defeitos continuam existentes. |
+| Diagnóstico | Relógio/callbacks e features sintéticas | Reproduzidos FPS falso, loop interrompido por exceção, avanço por callback antigo, `bestStreak` herdado e empate I/Y. Esta linha preserva o diagnóstico da FASE 00; o estado atual está acima e no roadmap. |
 | HTTP local | Python `ThreadingHTTPServer`, porta efêmera em `127.0.0.1`, GET via `urllib.request` | HTML, CSS e sete JS retornaram 200 com corpo. Servidor encerrado no fim; não houve chamada a CDN/webcam. |
 | Documentação | Validador `validate_specs.py` da skill `maintaining-project-specs`, mais conferência de links locais | Aprovado; links locais e UTF-8 dos 10 documentos conferidos. Não valida conteúdo pedagógico. |
 | Diff | `git diff --check`, revisão de arquivos novos e diff | Sem erros de whitespace; revisão confirma documentação e comentários. O status local está em `docs/state.md`. |
@@ -149,7 +152,7 @@ A auditoria avaliou as fontes reais em `vm.SourceTextModule`, com `localStorage`
 | I/Y | Features com extIndex/extMiddle/extRing=0, extPinky=1, thumbOut=1 e demais medidas afastando outras regras: I=1, Y=1; `classify()` retorna I por ordem. É um caso sintético, não estatística por usuário. |
 | Níveis | Comparar cada caractere de WORDS com `LETTERS[c].difficulty`: 11/13 palavras do nível 1 e 6/21 do nível 2 contêm letras com dificuldade maior que a do banco. |
 
-Essas reproduções confirmaram os comportamentos naquela auditoria. A FASE 01 corrigiu o FPS e a FASE 02 tratou parte dos recursos e callbacks antigos; o estado atual está no código e no [roadmap](../docs/ROADMAP.md).
+Essas reproduções confirmaram os comportamentos naquela auditoria. A FASE 01 corrigiu o FPS, a FASE 02 tratou parte dos recursos e callbacks antigos, e a FASE 02.1 corrigiu a sequência herdada; o estado atual está no código e no [roadmap](../docs/ROADMAP.md).
 
 ## Validação documental
 

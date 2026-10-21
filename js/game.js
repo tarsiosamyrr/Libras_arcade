@@ -51,7 +51,7 @@ export class Game extends EventTarget {
     this.streak = 0;
     this.bestStreak = 0;
     this.round = 0;
-    this.best = Number(localStorage.getItem(BEST_KEY) || 0);
+    this.best = this._readBest() ?? 0;
 
     this.target = null;        // letra alvo atual (practice) ou palavra atual (word)
     this.wordIndex = 0;        // posição da letra dentro da palavra (word mode)
@@ -69,7 +69,7 @@ export class Game extends EventTarget {
   }
 
   /* -------------------------------------------------------- practice --- */
-  /** Inicia Treino com fila filtrada pela dificuldade; cada acerto agenda o próximo alvo. */
+  /** Inicia Treino com fila filtrada pela dificuldade e zera a sequência da sessão anterior. */
   startPractice(level = 1) {
     this._clearActivity();
     this._paused = false;
@@ -77,6 +77,7 @@ export class Game extends EventTarget {
     this.level = level;
     this.score = 0;
     this.streak = 0;
+    this.bestStreak = 0;
     this.round = 0;
     this.hitsSinceLevelUp = 0;
     const pool = LETTER_POOL.filter((l) => LETTERS[l].difficulty <= level);
@@ -97,7 +98,7 @@ export class Game extends EventTarget {
   }
 
   /* ------------------------------------------------------------ word --- */
-  /** Inicia Soletrar usando o banco do nível; o cronômetro é renovado por letra. */
+  /** Inicia Soletrar com sequência própria da sessão; o cronômetro é renovado por letra. */
   startWord(level = 1) {
     this._clearActivity();
     this._paused = false;
@@ -105,6 +106,7 @@ export class Game extends EventTarget {
     this.level = level;
     this.score = 0;
     this.streak = 0;
+    this.bestStreak = 0;
     this.round = 0;
     this.hitsSinceLevelUp = 0;
     this.queue = shuffle(wordBank(level));
@@ -277,14 +279,36 @@ export class Game extends EventTarget {
   }
 
   /* ------------------------------------------------------------- fim --- */
-  /** Cancela intervalo e avanço pendente; salva o recorde de Treino/Soletrar. */
+  /** Lê o recorde; uma falha deixa a sessão utilizável e é registrada no console. */
+  _readBest() {
+    try {
+      const value = Number(localStorage.getItem(BEST_KEY) || 0);
+      return Number.isFinite(value) && value >= 0 ? value : 0;
+    } catch (error) {
+      console.warn('Não foi possível ler o recorde de Treino/Soletrar.', error);
+      return null;
+    }
+  }
+
+  /** Concilia memória e armazenamento antes de gravar; falhas são tentadas no próximo fim. */
+  _saveBestIfNeeded() {
+    this.best = Math.max(this.best, this.score);
+    const storedBest = this._readBest();
+    if (storedBest === null) return;
+    this.best = Math.max(this.best, storedBest);
+    if (this.best <= storedBest) return;
+    try {
+      localStorage.setItem(BEST_KEY, String(this.best));
+    } catch (error) {
+      console.warn('Não foi possível salvar o recorde de Treino/Soletrar.', error);
+    }
+  }
+
+  /** Cancela intervalo e avanço pendente; tenta salvar sem bloquear o fim da sessão. */
   end() {
     this._clearActivity();
     this._paused = false;
-    if (this.score > this.best) {
-      this.best = this.score;
-      localStorage.setItem(BEST_KEY, String(this.best));
-    }
+    this._saveBestIfNeeded();
     this.dispatchEvent(new CustomEvent('sessionend', { detail: this._snapshot() }));
     this.mode = null;
   }

@@ -42,7 +42,7 @@ export class ForcaGame extends EventTarget {
     super();
     this.level = 1;
     this.score = 0;
-    this.best = Number(localStorage.getItem(BEST_KEY) || 0);
+    this.best = this._readBest() ?? 0;
     this.round = 0;
     this.wins = 0;
     this.winsSinceLevelUp = 0;
@@ -59,7 +59,7 @@ export class ForcaGame extends EventTarget {
     this._advanceDueAt = 0;
   }
 
-  /** Inicia uma sessão sem cronômetro; cada palavra mantém seu conjunto de palpites. */
+  /** Inicia uma sessão sem cronômetro e zera vitórias; cada palavra tem seus palpites. */
   start(level = 1) {
     this._clearAdvance();
     this._paused = false;
@@ -200,14 +200,32 @@ export class ForcaGame extends EventTarget {
     return true;
   }
 
-  _saveBestIfNeeded() {
-    if (this.score > this.best) {
-      this.best = this.score;
-      localStorage.setItem(BEST_KEY, String(this.best));
+  /** Lê o recorde; uma falha deixa a sessão utilizável e é registrada no console. */
+  _readBest() {
+    try {
+      const value = Number(localStorage.getItem(BEST_KEY) || 0);
+      return Number.isFinite(value) && value >= 0 ? value : 0;
+    } catch (error) {
+      console.warn('Não foi possível ler o recorde da Forca.', error);
+      return null;
     }
   }
 
-  /** Cancela o avanço pendente, salva o recorde e volta a idle. */
+  /** Concilia memória e armazenamento; vitória ou fim seguinte tenta gravar novamente. */
+  _saveBestIfNeeded() {
+    this.best = Math.max(this.best, this.score);
+    const storedBest = this._readBest();
+    if (storedBest === null) return;
+    this.best = Math.max(this.best, storedBest);
+    if (this.best <= storedBest) return;
+    try {
+      localStorage.setItem(BEST_KEY, String(this.best));
+    } catch (error) {
+      console.warn('Não foi possível salvar o recorde da Forca.', error);
+    }
+  }
+
+  /** Cancela o avanço pendente e tenta salvar sem bloquear o fim da sessão. */
   end() {
     this._clearAdvance();
     this._paused = false;
