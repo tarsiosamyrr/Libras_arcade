@@ -69,6 +69,9 @@ export const CONFIG = {
   MIN_SCORE: 0.55,         // escore heurístico mínimo; não é probabilidade de acerto
   HOLD_MS: 600,            // tempo segurando o sinal para confirmar
   RELEASE_GRACE_MS: 250,   // tolerância a "tremores" de detecção
+  CONFIRM_COOLDOWN_MS: 900, // hipótese inicial: intervalo sem novas confirmações
+  REARM_RELEASE_MS: 250,   // ausência contínua de candidata para repetir a mesma letra
+  REARM_CHANGE_MS: 300,    // nova letra contínua antes de aceitar uma transição sem retirar a mão
 
   // --- novo: curvatura de dedo (dedo "em gancho"/curvado vs reto/fechado) ---
   CURL_HOOK_LO: 0.16,      // abaixo disso, dedo é considerado reto
@@ -613,6 +616,7 @@ export class LibrasEngine extends EventTarget {
       features: null,
       holdLetter: null,
       holdProgress: 0,
+      recognitionPhase: 'READY',
       fps: 0,
       // ----- duas mãos -----
       leftHand: { present: false, open: false },   // mão esquerda: forma/posição (referência)
@@ -623,10 +627,17 @@ export class LibrasEngine extends EventTarget {
     this._holdStart = null;
     this._holdKey = null;
     this._lastMismatchAt = 0;
+    this._confirmedLetter = null;
+    this._confirmedAt = null;
+    this._releaseStart = null;
+    this._released = false;
+    this._changeLetter = null;
+    this._changeStart = null;
 
     this._motionKey = null;
     this._motionBuffer = [];
     this._motionLastBaseAt = null;
+    this._motionInProgress = false;
 
     // buffer do gesto de navegação (deslizar a mão da esquerda pra direita)
     this._navBuffer = [];
@@ -667,6 +678,7 @@ export class LibrasEngine extends EventTarget {
     if (!right) {
       this.state.rightHand = { present: false };
       this._reset();
+      this._advanceConfirmation(null, nowMs);
       this._emit();
       return this.state;
     }
@@ -681,22 +693,21 @@ export class LibrasEngine extends EventTarget {
     this.state.letter = score >= CONFIG.MIN_SCORE ? letter : null;
     this.state.score = score;
 
-    // se o portão da mão esquerda estiver fechado, o "hold" recebe `null`
-    // (é exatamente o mesmo caminho que já existia pra "sinal sumiu por um
-    // instante" — com uma pequena tolerância antes de zerar o progresso, ver
-    // RELEASE_GRACE_MS). Assim não precisamos de nenhuma lógica nova de
-    // "pausa": se o portão ficar fechado por mais que a graça, o progresso
-    // simplesmente zera, e a pessoa refaz o sinal quando reabrir a mão.
-    this._trackHold(gateOpen ? this.state.letter : null, nowMs);
-
-    // mesma lógica pro gesto de movimento (J/Z): só acumula amostras novas
-    // com o portão aberto. Como o buffer é filtrado por janela de tempo
-    // (não por "tempo decorrido desde o início"), simplesmente não chamar
-    // a função enquanto fechado é seguro — nada fica "correndo escondido".
-    const motionLetter = gateOpen ? this._trackMotionSigns(rightLm, features, scale, nowMs) : null;
+    // J/Z recebem prioridade quando a pose-base realmente se move; uma
+    // pose-base imóvel continua elegível ao hold estático. Durante a espera,
+    // a classificação segue ativa, mas não acumulamos novas trajetórias.
+    const canTrackMotion = this.state.recognitionPhase === 'READY' || this.state.recognitionPhase === 'STABILIZING';
+    const motionLetter = gateOpen && canTrackMotion ? this._trackMotionSigns(rightLm, features, scale, nowMs) : null;
     if (motionLetter) {
-      this.resetHold();
-      this.dispatchEvent(new CustomEvent('signconfirmed', { detail: { letter: motionLetter } }));
+      this._confirm(motionLetter, nowMs);
+    } else if (gateOpen && canTrackMotion && this._motionInProgress) {
+      // Descartar apenas o candidato estático, preservando o progresso visual
+      // e o buffer da trajetória que ainda está sendo desenhada.
+      this._holdStart = null;
+      this._holdKey = null;
+      this.state.recognitionPhase = 'STABILIZING';
+    } else {
+      this._advanceConfirmation(gateOpen ? this.state.letter : null, nowMs);
     }
 
     this._emit();
@@ -709,11 +720,19 @@ export class LibrasEngine extends EventTarget {
     this._holdKey = null;
     this.state.holdLetter = null;
     this.state.holdProgress = 0;
+    if (this.state.recognitionPhase === 'STABILIZING') this.state.recognitionPhase = 'READY';
   }
 
   /** Interrompe gestos incompletos quando a câmera pausa ou a tela muda. */
   resetTracking() {
     this._reset();
+    this.state.recognitionPhase = 'READY';
+    this._confirmedLetter = null;
+    this._confirmedAt = null;
+    this._releaseStart = null;
+    this._released = false;
+    this._changeLetter = null;
+    this._changeStart = null;
     this._navBuffer = [];
     this.state.hands = 0;
     this.state.fps = 0;
@@ -721,6 +740,65 @@ export class LibrasEngine extends EventTarget {
     this.state.rightHand = { present: false };
     this.state.leftGateOpen = false;
     this._emit();
+  }
+
+  /** Avança confirmação e rearmamento com o timestamp monotônico da inferência, em ms.
+   * Durante cooldown, só observa liberação ou troca estável; não inicia hold nem trajetória.
+   */
+  _advanceConfirmation(letter, nowMs) {
+    const phase = this.state.recognitionPhase;
+    if (phase === 'CONFIRMED' || phase === 'COOLDOWN' || phase === 'WAIT_RELEASE') {
+      if (phase === 'CONFIRMED') this.state.recognitionPhase = 'COOLDOWN';
+      if (this._motionBuffer.length) this._resetMotion();
+
+      if (letter === null) {
+        if (this._releaseStart === null) this._releaseStart = nowMs;
+        if (nowMs - this._releaseStart >= CONFIG.REARM_RELEASE_MS) this._released = true;
+      } else {
+        this._releaseStart = null;
+      }
+
+      if (letter && letter !== this._confirmedLetter) {
+        if (letter !== this._changeLetter) {
+          this._changeLetter = letter;
+          this._changeStart = nowMs;
+        }
+      } else {
+        this._changeLetter = null;
+        this._changeStart = null;
+      }
+
+      if (nowMs - this._confirmedAt < CONFIG.CONFIRM_COOLDOWN_MS) return;
+      this.state.recognitionPhase = 'WAIT_RELEASE';
+      const changed = this._changeStart !== null &&
+        nowMs - this._changeStart >= CONFIG.REARM_CHANGE_MS;
+      if (!this._released && !changed) return;
+
+      // Nenhum hold ou trajeto anterior participa da próxima confirmação.
+      this.resetHold();
+      this._resetMotion();
+      this.state.recognitionPhase = 'READY';
+      this._confirmedLetter = null;
+      this._confirmedAt = null;
+      this._releaseStart = null;
+      this._released = false;
+      this._changeLetter = null;
+      this._changeStart = null;
+    }
+    this._trackHold(letter, nowMs);
+  }
+
+  _confirm(letter, nowMs) {
+    this.resetHold();
+    this._resetMotion();
+    this._confirmedLetter = letter;
+    this._confirmedAt = nowMs;
+    this._releaseStart = null;
+    this._released = false;
+    this._changeLetter = null;
+    this._changeStart = null;
+    this.state.recognitionPhase = 'CONFIRMED';
+    this.dispatchEvent(new CustomEvent('signconfirmed', { detail: { letter } }));
   }
 
   _trackHold(letter, nowMs) {
@@ -737,6 +815,7 @@ export class LibrasEngine extends EventTarget {
       this._holdKey = letter;
       this._holdStart = nowMs;
     }
+    this.state.recognitionPhase = 'STABILIZING';
     this._lastMismatchAt = nowMs;
 
     const progress = this._progressFor(nowMs);
@@ -744,13 +823,12 @@ export class LibrasEngine extends EventTarget {
     this.state.holdProgress = progress;
 
     if (progress >= 1) {
-      this.dispatchEvent(new CustomEvent('signconfirmed', { detail: { letter } }));
-      this.resetHold();
+      this._confirm(letter, nowMs);
     }
   }
 
   _progressFor(nowMs) {
-    if (!this._holdStart) return 0;
+    if (this._holdStart === null) return 0;
     return Math.min(1, (nowMs - this._holdStart) / CONFIG.HOLD_MS);
   }
 
@@ -774,9 +852,10 @@ export class LibrasEngine extends EventTarget {
     if (this._motionKey !== key) {
       this._motionKey = key;
       this._motionBuffer = [];
+      this._motionInProgress = false;
     }
 
-   if (activeKey) {
+    if (activeKey) {
       this._motionBuffer.push({ x: tip.x / scale, y: tip.y / scale, t: nowMs });
       while (this._motionBuffer.length > 0 && nowMs - this._motionBuffer[0].t > CONFIG.MOTION_WINDOW_MS) {
         this._motionBuffer.shift();
@@ -787,6 +866,7 @@ export class LibrasEngine extends EventTarget {
 
     const smoothed = smoothPath(this._motionBuffer, CONFIG.MOTION_SMOOTH_WINDOW);
     const traveled = pathLength(smoothed);
+    this._motionInProgress = traveled >= CONFIG.MOTION_MIN_SPAN * 0.5;
 
     const spanProgress = Math.min(0.95, traveled / CONFIG.MOTION_MIN_SPAN);
     if (spanProgress > (this.state.holdProgress || 0)) {
@@ -822,6 +902,7 @@ export class LibrasEngine extends EventTarget {
     this._motionKey = null;
     this._motionBuffer = [];
     this._motionLastBaseAt = null;
+    this._motionInProgress = false;
   }
 
   /** Rastreia o pulso de qualquer mão detectada em busca do gesto de

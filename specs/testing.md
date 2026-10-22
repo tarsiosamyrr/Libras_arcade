@@ -2,7 +2,13 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
-## Verificação atual — integração simulada de `app.js`/`ui.js`
+## Verificação atual — FASE 03, cooldown e integração simulada
+
+Em 22/10/2026, a linha de base deste worktree passou em `npm.cmd test` com **50/50** antes das edições. Após a FASE 03, `npm.cmd test` passou com **60/60** (10 casos novos), `npm.cmd run test:performance` com **13/13** e `npm.cmd run test:camera` com **47/47**. Sintaxe de `js/*.js` e dos testes alterados, validação de specs e `git diff --check` passaram. `git diff --cached --check` não apontou erro. O teste diferencial da FASE 01 passou a comparar classificação, cursor, navegação e primeira confirmação; a antiga repetição de cinco letras para a pose mantida foi substituída pela exigência de um evento, mudança intencional desta fase.
+
+Os novos casos usam relógio determinístico e o grafo real de módulos no harness existente: pose estática contínua, A→B com transição estável, A→A com/sem liberação, gesto rápido no cooldown, trajetória antiga, J/Z após rearmamento e pelo caminho completo de `update()`, pose-base estática imóvel, reset de sessão, três modos, menu, pausa/retomada, navegação e uma cadeia de inferência/listeners. A câmera simulada entregou 120 frames novos e houve 120 inferências, inclusive durante cooldown; o teste diferencial preservou a sequência de chamadas/timestamps da visão em relação à baseline. Isso verifica continuidade lógica, não FPS, CPU/RAM, latência ou reconhecimento com MediaPipe real. Os valores temporais e o feedback precisam de teste com webcam e jogadores. O cronômetro do Soletrar continua ativo no cooldown; a FASE 04 decidirá sua duração.
+
+## Histórico — integração simulada de `app.js`/`ui.js` na FASE 02.1
 
 Em 21/10/2026, após fechar a lacuna A-2 no harness de testes, `npm.cmd test` passou com **50/50 testes**: 13 de performance, 21 da FASE 02/02.1 e 16 novos testes de integração simulada. `npm.cmd run test:performance` passou com 13/13; `npm.cmd run test:camera` passou com 37/37 (21 anteriores + 16 de integração). Sintaxe dos módulos, `git diff --check` e `git diff --cached --check` também passaram. `npm.ps1` pode ser bloqueado pela política de execução local do PowerShell; `npm.cmd` executa os scripts. O aviso `ExperimentalWarning` do Node permanece esperado.
 

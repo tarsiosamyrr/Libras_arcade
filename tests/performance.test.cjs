@@ -110,7 +110,7 @@ test('callback antigo não reativa cadeia após reinício; estatísticas são da
   r.tick(250); assert.equal(r.vision.getPerformanceMetrics().processedFrames, 1);
 });
 
-test('estados, confirmações e cursor permanecem iguais para sequência sintética de landmarks', async () => {
+test('classificação, primeira confirmação e cursor preservados; pose contínua não repete', async () => {
   const traces = [];
   for (const baseline of [true, false]) {
     const result = { landmarks: [] };
@@ -120,7 +120,10 @@ test('estados, confirmações e cursor permanecem iguais para sequência sintét
     engine.addEventListener('navback', () => nav.push(r.calls.length));
     r.vision.startDetectionLoop(video, (detected, fps) => {
       const state = engine.update(detected, r.calls.at(-1).timestamp + 4, fps);
-      const copy = JSON.parse(JSON.stringify(state)); delete copy.fps;
+      // O hold e a fase temporal mudam intencionalmente na FASE 03.
+      const copy = JSON.parse(JSON.stringify(state));
+      delete copy.fps; delete copy.holdLetter; delete copy.holdProgress;
+      delete copy.recognitionPhase;
       states.push({ state: copy, cursor: JSON.parse(JSON.stringify(r.app.computeNavState(detected))) });
     });
     for (let i = 1; i <= 90; i++) {
@@ -133,7 +136,11 @@ test('estados, confirmações e cursor permanecem iguais para sequência sintét
     assert.ok(signs.length > 0); assert.ok(nav.length > 0);
     traces.push({ states, signs, nav });
   }
-  assert.deepEqual(traces[1], traces[0]);
+  assert.deepEqual(traces[1].states, traces[0].states);
+  assert.deepEqual(traces[1].nav, traces[0].nav);
+  assert.equal(traces[1].signs[0], traces[0].signs[0]);
+  assert.deepEqual(traces[1].signs, ['A']);
+  assert.ok(traces[0].signs.length > 1);
 });
 
 test('hold e trajetórias J/Z preservam confirmações e instante em fixtures sintéticas', async () => {

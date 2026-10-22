@@ -77,6 +77,7 @@ export class UI {
     this._cacheProgress = null;
     this._cacheLetter = null;
     this._cacheStatusKey = null;
+    this._cacheRecognitionPhase = null;
 
     this._buildReference();
     this._bindLibrasEvents();
@@ -115,6 +116,19 @@ export class UI {
   }
 
   _onLibrasFrame(state) {
+    if ((this.currentScreen === 'play' || this.currentScreen === 'forca-play') &&
+        this._cacheRecognitionPhase !== state.recognitionPhase) {
+      this._cacheRecognitionPhase = state.recognitionPhase;
+      if (this.hintEl) {
+        this.hintEl.textContent = {
+          READY: 'Pronto para reconhecer',
+          STABILIZING: 'Detectando gesto',
+          CONFIRMED: 'Gesto confirmado',
+          COOLDOWN: 'Preparando próxima letra',
+          WAIT_RELEASE: 'Prepare outro gesto ou libere a mão'
+        }[state.recognitionPhase] || 'Pronto para reconhecer';
+      }
+    }
     // SÓ atualiza o texto se o número de FPS ou de Mãos realmente mudou
     if (this._cacheFps !== state.fps) {
       this._cacheFps = state.fps;
@@ -129,12 +143,14 @@ export class UI {
 
     // anel de "segurar para confirmar" — evita reescrever o SVG do anel se o progresso for o mesmo
     const progress = state.holdProgress || 0;
-    if (this._cacheProgress !== progress || this._cacheLetter !== state.letter) {
+    if (this._cacheProgress !== progress || this._cacheLetter !== state.letter ||
+        this._cacheRingPhase !== state.recognitionPhase) {
       this._cacheProgress = progress;
       this._cacheLetter = state.letter;
+      this._cacheRingPhase = state.recognitionPhase;
 
       const offsetStr = String(this.HOLD_CIRC * (1 - progress));
-      const letterText = state.letter ? state.letter : '—';
+      const letterText = state.recognitionPhase === 'STABILIZING' && state.letter ? state.letter : '—';
 
       if (this.currentScreen === 'play') {
         if (this.holdFill) this.holdFill.style.strokeDashoffset = offsetStr;
@@ -413,6 +429,8 @@ export class UI {
       this._cacheProgress = null;
       this._cacheLetter = null;
       this._cacheStatusKey = null;
+      this._cacheRecognitionPhase = null;
+      this._cacheRingPhase = null;
       this._pinchArmed = false;
       this._exitPinchArmed = false;
     }

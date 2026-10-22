@@ -10,6 +10,226 @@ function instance(runtime, Constructor) {
   return found;
 }
 
+function temporalRig(r) {
+  const engine = new r.LibrasEngine();
+  const signs = [];
+  engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+  const sample = (letter, at) => {
+    r.clock.now = at;
+    engine._advanceConfirmation(letter, at);
+    return engine.state.recognitionPhase;
+  };
+  return { engine, signs, sample };
+}
+
+test('cooldown confirma gesto estático uma vez e mantém a pose prolongada bloqueada', async () => {
+  const r = await browserRuntime();
+  const { engine, signs, sample } = temporalRig(r);
+  assert.equal(sample('A', 100), 'STABILIZING');
+  assert.equal(sample('A', 699), 'STABILIZING');
+  assert.equal(sample('A', 700), 'CONFIRMED');
+  for (let at = 750; at <= 3000; at += 50) sample('A', at);
+  assert.deepEqual(signs, ['A']);
+  assert.equal(engine.state.recognitionPhase, 'WAIT_RELEASE');
+  assert.equal(r.clock.tasks.size, 0);
+});
+
+test('cooldown exige mudança estável antes de A → B, sem confirmar gesto transitório', async () => {
+  const r = await browserRuntime();
+  const { signs, sample } = temporalRig(r);
+  sample('A', 100); sample('A', 700);
+  sample('B', 750); sample('B', 850); sample('A', 900);
+  sample('B', 1000); sample('B', 1250);
+  assert.deepEqual(signs, ['A']);
+  sample('B', 1600);
+  sample('B', 2199);
+  assert.deepEqual(signs, ['A']);
+  sample('B', 2200);
+  assert.deepEqual(signs, ['A', 'B']);
+});
+
+test('A → A requer liberação de 250 ms, inclusive quando ela ocorre no cooldown', async () => {
+  const r = await browserRuntime();
+  const { signs, sample } = temporalRig(r);
+  sample('A', 100); sample('A', 700);
+  sample(null, 800); sample(null, 1049); sample('A', 1100);
+  sample('A', 1700); sample('A', 2300);
+  assert.deepEqual(signs, ['A']);
+  sample(null, 2400); sample(null, 2650);
+  sample('A', 2700); sample('A', 3300);
+  assert.deepEqual(signs, ['A', 'A']);
+});
+
+test('gestos rápidos e trajetórias antigas no cooldown não geram confirmações', async () => {
+  const r = await browserRuntime();
+  const { engine, signs, sample } = temporalRig(r);
+  sample('A', 100); sample('A', 700);
+  engine._motionKey = 'J';
+  engine._motionBuffer = [{ x: 0, y: 0, t: 650 }];
+  sample('B', 800); sample('B', 900); sample('A', 950);
+  sample('A', 1600);
+  assert.deepEqual(signs, ['A']);
+  assert.equal(engine._motionBuffer.length, 0);
+  sample('B', 1700); sample('B', 2000); sample('B', 2600);
+  assert.deepEqual(signs, ['A', 'B']);
+});
+
+test('resetTracking limpa cooldown e candidatos de sessões anteriores', async () => {
+  const r = await browserRuntime();
+  const { engine, signs, sample } = temporalRig(r);
+  sample('A', 100); sample('A', 700);
+  engine.resetTracking();
+  assert.equal(engine.state.recognitionPhase, 'READY');
+  sample('B', 750); sample('B', 1349);
+  assert.deepEqual(signs, ['A']);
+  sample('B', 1350);
+  assert.deepEqual(signs, ['A', 'B']);
+});
+
+test('J/Z usam trajetos novos depois de confirmação, cooldown e liberação', async () => {
+  const r = await browserRuntime();
+  for (const letter of ['J', 'Z']) {
+    const { engine, signs, sample } = temporalRig(r);
+    const features = { extIndex: letter === 'Z' ? 1 : 0, extMiddle: 0, extRing: 0, extPinky: letter === 'J' ? 1 : 0 };
+    const points = letter === 'J'
+      ? [[.2,.1],[.2,.2],[.2,.3],[.2,.4],[.2,.5],[.2,.6],[.25,.7],[.35,.75],[.45,.7],[.5,.6],[.5,.5]]
+      : Array.from({ length: 25 }, (_, i) => [i <= 8 ? i*.1 : i <= 16 ? (16-i)*.1 : (i-16)*.1, .1+i*.02]);
+    const runPath = (start) => {
+      for (let i = 0; i < points.length; i++) {
+        const [x, y] = points[i];
+        const lm = Array.from({ length: 21 }, () => ({ x, y, z: 0 }));
+        const at = start + i * 50;
+        sample(null, at);
+        const canTrack = engine.state.recognitionPhase === 'READY' || engine.state.recognitionPhase === 'STABILIZING';
+        const found = canTrack ? engine._trackMotionSigns(lm, features, 1, at) : null;
+        if (found) engine._confirm(found, at);
+      }
+    };
+    runPath(100);
+    assert.deepEqual(signs, [letter]);
+    assert.equal(engine._motionBuffer.length, 0);
+    const confirmedAt = engine._confirmedAt;
+    sample(null, confirmedAt + 950); sample(null, confirmedAt + 1200);
+    assert.equal(engine.state.recognitionPhase, 'READY');
+    runPath(confirmedAt + 1250);
+    assert.deepEqual(signs, [letter, letter]);
+  }
+});
+
+test('trajetórias J/Z passam pelo update antes da pose-base estática', async () => {
+  const r = await browserRuntime();
+  for (const letter of ['J', 'Z']) {
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    const points = letter === 'J'
+      ? [[.2,.1],[.2,.2],[.2,.3],[.2,.4],[.2,.5],[.2,.6],[.25,.7],[.35,.75],[.45,.7],[.5,.6],[.5,.5]]
+      : Array.from({ length: 25 }, (_, i) => [i <= 8 ? i*.1 : i <= 16 ? (16-i)*.1 : (i-16)*.1, .1+i*.02]);
+    for (let i = 0; i < points.length; i++) {
+      const [dx, dy] = points[i];
+      const lm = Array.from({ length: 21 }, () => ({ x: .5, y: .75, z: 0 }));
+      lm[0] = { x: .5, y: .8, z: 0 };
+      for (const index of [5, 9, 13, 17]) lm[index] = { x: .5, y: .6, z: 0 };
+      const mcp = letter === 'J' ? 17 : 5;
+      const pip = letter === 'J' ? 18 : 6;
+      const tip = letter === 'J' ? 20 : 8;
+      lm[mcp] = { x: .45, y: .6, z: 0 };
+      lm[pip] = { x: .45, y: .5, z: 0 };
+      lm[tip] = { x: .45 + dx * .2, y: .35 + dy * .2, z: 0 };
+      engine.update({ landmarks: [lm] }, 100 + i * 50, 20);
+    }
+    assert.deepEqual(signs, [letter], letter);
+  }
+});
+
+test('pose-base imóvel continua confirmável como letra estática', async () => {
+  const r = await browserRuntime();
+  const engine = new r.LibrasEngine();
+  const signs = [];
+  engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+  const lm = Array.from({ length: 21 }, () => ({ x: .5, y: .75, z: 0 }));
+  lm[0] = { x: .5, y: .8, z: 0 };
+  for (const index of [5, 9, 13, 17]) lm[index] = { x: .5, y: .6, z: 0 };
+  lm[5] = { x: .45, y: .6, z: 0 };
+  lm[6] = { x: .45, y: .5, z: 0 };
+  lm[8] = { x: .45, y: .35, z: 0 };
+  engine.update({ landmarks: [lm] }, 100, 20);
+  const candidate = engine.state.letter;
+  for (let at = 150; at <= 750; at += 50) engine.update({ landmarks: [lm] }, at, 20);
+  assert.deepEqual(signs, [candidate]);
+});
+
+test('webcam simulada mantém inferência, feedback e uma jogada por pose nos três modos', async () => {
+  const r = await browserRuntime();
+  r.clickStart();
+  await r.settle();
+  const engine = instance(r, r.LibrasEngine);
+  const game = instance(r, r.Game);
+  const forca = instance(r, r.ForcaGame);
+  const hand = Array.from({ length: 21 }, (_, j) => ({ x: .7 + j / 100, y: .4 + j / 200, z: 0 }));
+  r.setDetectionResult({ landmarks: [hand] });
+  let videoFrame = 0;
+  const frame = (at) => {
+    r.clock.now = at;
+    r.video.currentTime = ++videoFrame;
+    r.raf.step(at);
+  };
+  for (let at = 50; at <= 750; at += 50) frame(at);
+  assert.equal(engine.dispatchCount('signconfirmed'), 1);
+  assert.equal(game.score, 0);
+  assert.equal(forca.errors, 0);
+
+  let at = 1000;
+  for (const [card, mode] of [[0, 'practice'], [1, 'word'], [2, 'forca']]) {
+    r.cards[card].click();
+    assert.equal(engine.state.recognitionPhase, 'READY');
+    const before = engine.dispatchCount('signconfirmed');
+    if (mode === 'practice') game.target = 'A';
+    for (let i = 0; i < 35; i++, at += 50) frame(at);
+    assert.equal(engine.dispatchCount('signconfirmed'), before + 1, mode);
+    assert.equal(engine.state.recognitionPhase, 'WAIT_RELEASE');
+    assert.match(r.elements.get('#hint-text').textContent, /Prepare outro gesto|Preparando próxima letra/);
+    if (mode === 'practice') assert.equal(game.dispatchCount('correct'), 1);
+    if (mode === 'forca') assert.ok(forca.guessed.size <= 1);
+    r.elements.get('#exit-btn').click();
+    assert.equal(engine.state.recognitionPhase, 'READY');
+    assert.equal(r.elements.get('#home').classList.contains('hidden'), false);
+    at += 100;
+  }
+  assert.equal(r.frames.size, 1);
+  assert.equal(videoFrame, 120);
+  assert.equal(r.counts().detectCount, videoFrame);
+  assert.equal(engine.count('signconfirmed'), 1);
+});
+
+test('pausa, retomada e gesto de voltar descartam cooldown sem duplicar recursos', async () => {
+  const r = await browserRuntime();
+  r.clickStart();
+  await r.settle();
+  const engine = instance(r, r.LibrasEngine);
+  r.cards[1].click();
+  engine._advanceConfirmation('A', 100);
+  engine._advanceConfirmation('A', 700);
+  assert.equal(engine.state.recognitionPhase, 'CONFIRMED');
+  r.document.hidden = true;
+  r.dispatchDocument('visibilitychange');
+  assert.equal(engine.state.recognitionPhase, 'READY');
+  assert.equal(r.frames.size, 0);
+  r.document.hidden = false;
+  r.dispatchDocument('visibilitychange');
+  await r.settle();
+  assert.equal(r.frames.size, 1);
+  engine._advanceConfirmation('B', 1000);
+  engine._advanceConfirmation('B', 1600);
+  assert.equal(engine.dispatchCount('signconfirmed'), 2);
+  engine.dispatchEvent(new r.CustomEvent('navback'));
+  assert.equal(engine.state.recognitionPhase, 'READY');
+  assert.equal(r.elements.get('#home').classList.contains('hidden'), false);
+  assert.equal(engine.count('signconfirmed'), 1);
+  assert.equal(engine.count('navback'), 1);
+  assert.equal(r.frames.size, 1);
+});
+
 test('app starts once from the real button and creates one UI, camera stream and frame loop', async () => {
   const r = await browserRuntime();
   r.clickStart();

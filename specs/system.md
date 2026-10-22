@@ -1,6 +1,6 @@
 # Sistema implementado
 
-**Última inspeção:** 21/10/2026. **Referência:** FASE 02.1 sobre `fb22e89` na branch `integracao/fase-02-camera`.
+**Última inspeção:** 22/10/2026. **Referência:** FASE 03 no worktree `feat/fase-03-cooldown`, sem integração automática.
 
 ## Unidade executável e dependências
 
@@ -37,9 +37,13 @@ As setas do diagrama representam fluxo/responsabilidade, não apenas imports. No
 
 ## Reconhecimento e comunicação
 
-Features usam distâncias 3D e ângulos 2D da imagem; escala mínima de `1e-4`. As 24 regras estáticas produzem média de escores fuzzy. O melhor escore ≥0,55 alimenta hold de 600 ms; perda breve tem graça de 250 ms. Não há margem de separação entre candidatos ou calibração probabilística.
+Features usam distâncias 3D e ângulos 2D da imagem; escala mínima de `1e-4`. As 24 regras estáticas produzem média de escores fuzzy. O melhor escore ≥0,55 alimenta hold de 600 ms; perda breve tem graça de 250 ms. Não há margem de separação entre candidatos ou calibração probabilística. Esses parâmetros e regras não foram alterados na FASE 03.
 
-J/Z acumulam posições de ponta normalizadas pela escala da mão. Janela 1.300 ms, suavização de 3 pontos, ao menos 6 amostras. J usa curvatura/mudança angular; Z conta inversões horizontais. O gesto de voltar acompanha o pulso numa janela de 700 ms, com cooldown de 1.200 ms. Ambos convivem com o reconhecimento estático. `resetHold()` não limpa os outros buffers.
+A confirmação usa `performance.now()` recebido pelo motor e cinco fases em `state.recognitionPhase`: `READY` aceita candidato; `STABILIZING` acumula hold estático e trajetória J/Z; `CONFIRMED` marca o frame da emissão única de `signconfirmed`; `COOLDOWN` bloqueia novas confirmações por no mínimo 900 ms; `WAIT_RELEASE` espera liberação ou mudança estável. O rearmamento exige ausência contínua de candidata por 250 ms para repetir a letra, ou outra candidata contínua por 300 ms para trocar sem retirar a mão. A liberação pode ocorrer durante o cooldown, mas um novo hold ou trajeto só começa depois do intervalo. Candidatos e trajetórias anteriores são descartados na confirmação e no rearmamento; `resetTracking()` limpa também a fase temporal na pausa/troca de tela. `resetHold()` limpa apenas o hold, preservando o cooldown quando um jogo avança de alvo.
+
+Durante `COOLDOWN`/`WAIT_RELEASE`, a classificação estática continua para detectar transições e alimentar o painel, mas a análise de trajetória J/Z é suspensa. O loop de inferência, Canvas, cursor e `navback` continuam ativos. A UI usa o elemento existente `hint-text` para mostrar fase apenas quando ela muda, mantendo o anel sem progresso durante a espera. O relógio do Soletrar continua durante esse intervalo; revisão de sua duração ficou para a FASE 04.
+
+J/Z acumulam posições de ponta normalizadas pela escala da mão. Janela 1.300 ms, suavização de 3 pontos, ao menos 6 amostras. J usa curvatura/mudança angular; Z conta inversões horizontais. Quando a pose-base acumula deslocamento suavizado de ao menos metade do mínimo de trajetória (0,13 da escala da mão), a trajetória tem prioridade sobre o hold estático; a pose-base imóvel segue confirmável como letra estática. O gesto de voltar acompanha o pulso numa janela de 700 ms, com cooldown independente de 1.200 ms. Ambos convivem com o reconhecimento estático quando o motor está apto a confirmar. `resetHold()` não limpa os outros buffers.
 
 | Emissor | Eventos e consumidores |
 | --- | --- |

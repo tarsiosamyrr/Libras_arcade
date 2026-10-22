@@ -2,8 +2,8 @@
 id: core
 contract_status: confirmed
 implementation_status: partial
-last_verified: 2026-10-21
-last_verified_ref: working-tree-fase02-1
+last_verified: 2026-10-22
+last_verified_ref: working-tree-fase03-automated
 ---
 
 # Prática de datilologia nos três jogos
@@ -21,7 +21,7 @@ Jogador concede acesso à webcam e navega por controles ou gestos. Landmarks ali
 - Manter os três modos e seus feedbacks documentados no [README](../../README.md).
 - Preservar processamento local e não gravar imagens/biometria automaticamente.
 - Não confundir cobertura nominal com precisão ou validação pedagógica.
-- Evoluir em fases autorizadas, com evidência e documentação de riscos. FASE 00 foi documental; FASE 01 instrumentou e removeu trabalho redundante; a FASE 02 acrescentou pausa, retomada, cancelamento e descarte de recursos; a FASE 02.1 trata falhas de armazenamento e reinicia estatísticas por sessão, preservando os contratos dos jogos e do reconhecimento.
+- Evoluir em fases autorizadas, com evidência e documentação de riscos. FASE 00 foi documental; FASE 01 instrumentou e removeu trabalho redundante; a FASE 02 acrescentou pausa, retomada, cancelamento e descarte de recursos; a FASE 02.1 trata falhas de armazenamento e reinicia estatísticas por sessão; a FASE 03 controla confirmação única, cooldown e rearmamento sem pausar a inferência.
 
 ## Invariantes e regras de negócio
 
@@ -29,7 +29,7 @@ Treino compara uma letra; Soletrar recebe uma sequência e premia palavra comple
 
 ## Estado atual e lacunas
 
-Os motores e o classificador estão implementados, com cobertura nominal A–Z e 90 palavras. A FASE 01 corrigiu FPS e otimizou loop/Canvas com comparação controlada. A FASE 02 controla stream, modelo, loop, atrasos de rodada e pausa dos jogos. A FASE 02.1 mantém o jogo utilizável quando o armazenamento falha e zera a melhor sequência ao iniciar Treino/Soletrar. Fluxo de ranking/resultados, acessibilidade, validação com webcam e validade do reconhecimento possuem lacunas. A capacidade permanece `partial`; testes sintéticos não validam o uso real com câmera.
+Os motores e o classificador estão implementados, com cobertura nominal A–Z e 90 palavras. A FASE 01 corrigiu FPS e otimizou loop/Canvas com comparação controlada. A FASE 02 controla stream, modelo, loop, atrasos de rodada e pausa dos jogos. A FASE 02.1 mantém o jogo utilizável quando o armazenamento falha e zera a melhor sequência ao iniciar Treino/Soletrar. A FASE 03 impede repetição automática da pose e mostra a preparação da próxima letra em cenários simulados. Fluxo de ranking/resultados, acessibilidade, validação com webcam e validade do reconhecimento possuem lacunas. A capacidade permanece `partial`; testes sintéticos não validam o uso real com câmera.
 
 ## Evidências de implementação e teste
 

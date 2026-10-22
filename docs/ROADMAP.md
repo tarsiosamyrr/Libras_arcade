@@ -65,7 +65,7 @@ O stream fica em `video.srcObject`; o modelo e identificador de rAF ficam no mó
 
 Canvas interno 640×480, restrições de captura reduzidas, detecção apenas com `currentTime` novo, intervalo de 50 ms, desenho agrupado de conexões e caches parciais de UI já existem. Nada foi otimizado na FASE 00. CPU/RAM, latência média/p95, tarefas longas e impacto de resolução continuam sem baseline. As simulações de FPS não são benchmark de hardware.
 
-## Plano técnico — FASE 01 executada; demais não iniciadas
+## Plano técnico — FASES 01 a 03 implementadas em seus respectivos worktrees
 
 Cada fase depende da conclusão/revisão da anterior e de autorização explícita. As ações abaixo delimitam investigação e aceite; detalhes de implementação e testes devem ser definidos a partir da baseline, sem decisões antecipadas de framework, Worker ou modelo.
 
@@ -73,8 +73,8 @@ Cada fase depende da conclusão/revisão da anterior e de autorização explíci
 | --- | --- | --- |
 | 01 — CPU, RAM e inferência | `vision.js`, `app.js` e testes/documentação | Implementada e verificada automaticamente: FPS/latências, buffers limitados, cadeia única, Canvas, baseline por modo/menu/diagnóstico e avaliação rVFC/Worker. Resolução preservada. Ver relatório para números e limites: sem CPU/RAM total ou homologação de precisão por webcam. |
 | 02 — Ciclo de vida | `vision.js`, `app.js`, `game.js`, `forca.js`, `ui.js` | Implementação integrada no diretório de trabalho e testes sintéticos executados; Política em [Fase 02 — câmera e recursos](fase-02-camera-recursos.md). Falha de import remoto e validação com webcam real continuam pendentes. |
-| 03 — TypeScript gradual | Módulos `js/` e configuração a propor | Avaliar TypeScript/Vite, mapear tipos de landmarks, eventos, dados e estados. Migrar em passos pequenos, preservando execução e distribuição estática. Aceite: checks rigorosos reais documentados, sem substituição desnecessária da interface. |
-| 04 — Arquitetura | Fronteiras visão/reconhecimento/dados/jogos/UI | Reduzir dependência transitiva de dados para CDN, chamadas de métodos internos e responsabilidades misturadas, conforme benefício demonstrado. Aceite: contratos explícitos e componentes testáveis, sem complexidade gratuita. |
+| 03 — Cooldown e fluidez | `libras.js`, `ui.js`, testes/documentação | Implementado e verificado automaticamente: estados de confirmação e rearmamento sem interromper inferência, renderização ou navegação; três modos testados com relógio controlado. Homologação com webcam pendente. |
+| 04 — Cronômetro | `game.js`, UI e testes/documentação | Rever a duração e a contagem do cronômetro do Soletrar considerando a espera inevitável entre letras. Ainda não iniciada; requer autorização própria. |
 | 05 — Qualidade | Regras, estados, relógios, eventos e UI | Instituir suíte proporcional com dados, classificação sintética, empate/ambiguidade, hold/J/Z, pontuação, progressão, reinício, timeout, erros e integração dos três modos. Aceite: comandos reproduzíveis e separação clara entre testes automáticos e webcam real. |
 | 06 — Pesquisa Python | Experimentos separados, documentação e futuro contrato de exportação | Definir coleta consentida, rótulos, normalização, divisão por participante/sessão, matriz de confusão e comparação estático/temporal. Avaliar formato viável no navegador. Aceite: protocolo e resultados rastreáveis; nenhum backend ou coleta automática presumidos. |
 | 07 — Acessibilidade e experiência | `index.html`, `style.css`, `ui.js`, conteúdo pedagógico | Validar teclado, foco, leitor de tela, touch, câmera, erros, contraste, zoom e redução de movimento; resolver inconsistências de painéis conforme contrato. Aceite: matriz manual documentada e validação especializada para alterações pedagógicas. |
@@ -82,6 +82,21 @@ Cada fase depende da conclusão/revisão da anterior e de autorização explíci
 
 ## Riscos e encerramento
 
-A FASE 00 não corrigiu achados funcionais; a FASE 01 tratou desempenho, a FASE 02 tratou ciclo de recursos e atrasos de rodada, e a FASE 02.1 tratou A-1/M-1 nos cenários sintéticos. Os testes e métricas controladas não substituem homologação de webcam/compatibilidade. Permanecem riscos de import remoto, interface, reconhecimento e comportamento em hardware real.
+A FASE 00 não corrigiu achados funcionais; a FASE 01 tratou desempenho, a FASE 02 tratou ciclo de recursos e atrasos de rodada, a FASE 02.1 tratou A-1/M-1 nos cenários sintéticos, e a FASE 03 tratou LIB-03/04 no fluxo temporal simulado. Os testes e métricas controladas não substituem homologação de webcam/compatibilidade. Permanecem riscos de import remoto, interface, reconhecimento e comportamento em hardware real.
 
-Próximo passo pendente de autorização: validação manual com webcam e decisão sobre a fase seguinte. A FASE 03 não foi iniciada.
+O plano antigo de TypeScript gradual e reorganização arquitetural foi deslocado para decisões futuras sem número de fase; esta reordenação não autoriza sua implementação.
+
+## Relatos da validação manual e encaminhamento da FASE 03
+
+Os itens LIB-01 a LIB-06 foram relatados após teste manual com webcam. O relato descreve a experiência observada; não equivale a diagnóstico reproduzido com amostras, dispositivo e protocolo registrados.
+
+| ID | Relato manual | Estado técnico e encaminhamento |
+| --- | --- | --- |
+| LIB-01 | E, S e M foram reconhecidas incorretamente. | Pendente de avaliação por letra com webcam e especialista; regras geométricas não alteradas na FASE 03. |
+| LIB-02 | X foi difícil de identificar. | Pendente da mesma avaliação; regra não alterada. |
+| LIB-03 | Não houve descanso adequado entre letras. | Causa confirmada no código: `resetHold()` após confirmação permitia reiniciar o mesmo hold e emitir novamente após 600 ms. FASE 03 introduz cooldown/rearmamento; efeito real pendente de webcam. |
+| LIB-04 | A pausa da confirmação pareceu travar o jogo. | O fluxo auditado não parava webcam/rAF ao confirmar; hold repetido, avanço de rodada de 450 ms e ausência de estado visível tornam a espera ambígua. FASE 03 mantém processamento e adiciona feedback temporal. A sensação em uso real ainda precisa de reavaliação. |
+| LIB-05 | Algumas letras não tiveram suporte funcional adequado. | Cobertura nominal A–Z não comprova uso confiável. Identificar letras e condições específicas em avaliação futura. |
+| LIB-06 | Ainda são desejadas melhorias de CPU, RAM e fluidez. | Sem nova medição de CPU/RAM real; investigar com entrada e hardware comparáveis antes de otimizar. |
+
+Próximo passo pendente: homologar LIB-03/04 com webcam real, incluindo letras iguais, distintas, J/Z, três modos e diferentes velocidades de movimento. Não iniciar a FASE 04 sem autorização.

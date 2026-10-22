@@ -2,7 +2,7 @@
 
 Jogo educacional de datilologia em Libras, desenvolvido no contexto de uma Liga de Inteligência Artificial. A webcam fornece landmarks da mão para um classificador geométrico executado no navegador, que alimenta os modos **Treino, Soletrar e Forca**.
 
-Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02 e as correções de armazenamento e estatísticas da FASE 02.1. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
+Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02, as correções de armazenamento e estatísticas da FASE 02.1 e o cooldown temporal da FASE 03. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
 
 Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arcade).
 
@@ -43,6 +43,7 @@ Alternativas existentes de desenvolvimento: Live Server do VS Code ou `npx serve
 | Escolher nível inicial | Clique/toque nos números 1–3; não há seleção de nível por gesto implementada. |
 | Confirmar letra estática | Sustentar a candidata por 600 ms, com tolerância de 250 ms a perda breve da candidata. |
 | Confirmar J/Z | Formar pose-base e executar trajetória; reconhecimento experimental separado do hold. |
+| Preparar a próxima letra | Após confirmar, aguardar ao menos 900 ms. Para repetir a mesma letra, deixar de apresentar candidata por 250 ms; para outra letra, mantê-la detectada por 300 ms. A nova confirmação ainda exige hold de 600 ms ou trajetória J/Z. |
 | Abrir guia | Botões “Guia do alfabeto” ou “Aprender Libras”. |
 | Sair da rodada | Botão Sair, `Esc`, pinça sobre Sair ou deslize da mão da esquerda para a direita na imagem espelhada. |
 | Fechar guia | Clique em Fechar, `Esc`, deslize ou punho fechado fora das telas de jogo. |
@@ -62,6 +63,8 @@ A cobertura **nominal** do código é de 26 letras:
 Essa lista descreve a implementação, não comprova precisão, conformidade pedagógica ou reconhecimento confiável de todas as letras. H, K e X, por exemplo, são tratados como poses estáticas neste código; isso não é uma afirmação linguística sobre a realização correta desses sinais em Libras.
 
 O MediaPipe detecta a mão e seus 21 pontos; a classificação das letras é feita por regras próprias. Distâncias são normalizadas pela distância entre pulso e base do dedo médio, com proteção contra divisão por zero. Extensão/curvatura de dedos, posição do polegar, distâncias e orientação recebem escores fuzzy. A maior pontuação acima de `MIN_SCORE = 0.55` vira candidata. O percentual apresentado como “confiança” é um escore heurístico, sem calibração estatística.
+
+O cooldown bloqueia apenas novas confirmações. Vídeo, inferência, desenho, cursor e gesto de voltar continuam ativos. O texto discreto na barra inferior indica detecção, confirmação, preparação ou prontidão; a barra circular zera durante a espera. O valor de 900 ms é uma hipótese inicial para teste com jogadores. No Soletrar, o cronômetro por letra continua em curso durante a espera por cooldown/rearmamento; sua duração será revista somente na FASE 04.
 
 J/Z usam histórico de até 1.300 ms, suavização por 3 amostras, mínimo de 6 amostras e critérios de trajetória. O reconhecimento estático continua ativo durante esse processamento, podendo competir com a pose-base. Há ainda desempates por ordem de regras, como o caso sintético de I/Y registrado na auditoria. Iluminação, oclusão, escala, posição, orientação e frequência de frames precisam de avaliação real.
 
@@ -137,18 +140,18 @@ Falhas de permissão, câmera ausente ou ocupada e erros de inferência mostram 
 
 ## Testes e validação
 
-Os testes focados das FASES 01, 02 e 02.1 usam o runner nativo do Node. A suíte atual contém **50 testes**: métricas/regressão, persistência e motores, além de integração simulada do boot, navegação e ciclo de vida de `app.js`/`ui.js`. A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
+Os testes focados das FASES 01 a 03 usam o runner nativo do Node. A suíte atual contém **60 testes**: métricas/regressão, persistência e motores, além de integração simulada do boot, navegação, ciclo de vida e confirmação temporal. A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
 
 ```powershell
-npm test
-npm run test:performance
-npm run test:camera
+npm.cmd test
+npm.cmd run test:performance
+npm.cmd run test:camera
 ```
 
 Sem npm, os comandos equivalentes são:
 
 ```powershell
-node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs
+node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs tests/app-ui.integration.test.cjs
 node --experimental-vm-modules --test tests/performance.test.cjs
 node --test tests/phase02.test.mjs
 node --experimental-vm-modules --test tests/app-ui.integration.test.cjs
