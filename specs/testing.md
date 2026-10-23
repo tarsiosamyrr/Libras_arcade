@@ -2,6 +2,12 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
+## Verificação atual — FASE 03.1, arbitragem estático/dinâmico
+
+Em 23/10/2026, a linha de base `4af4a98` passou em `npm.cmd test` com **60/60**. Antes da correção, os novos cenários de `LibrasEngine.update()` reproduziram D/I bloqueados por deslocamentos parciais, ausência de rearmamento D→Z/I→J e confirmação residual Z→D/J→I. Após a correção, `npm.cmd test` passou com **90/90** (30 casos novos), `npm.cmd run test:performance` com **13/13** e `npm.cmd run test:camera` com **77/77**. A sintaxe dos módulos JavaScript passou. Os casos novos estão no harness de integração existente em `tests/app-ui.integration.test.cjs`, com relógio e landmarks simulados.
+
+Os casos cobrem D/I com oscilação, trajetórias J/Z lentas, rápidas, incompletas e consecutivas, cooldown, rearmamento, pose residual, perda temporária de landmarks, timestamps irregulares, pausa/retomada, troca de sessão/tela, eventos únicos e letras estáticas sem relação com J/Z. A reprodução inicial demonstra os defeitos lógicos nas entradas simuladas; o resultado verde demonstra o comportamento nessas entradas. Ainda faltam webcam real, classificação por letra, orientações/distâncias da mão, CPU/RAM e testes de usabilidade. O teste de performance é uma suíte de regressão lógica e não mede ganho de CPU/RAM. Os novos limiares temporais e espaciais são hipóteses de teste. A estratégia e as limitações estão em [FASE 03.1](changes/2026-10-23-arbitragem-estatico-dinamico.md).
+
 ## Verificação atual — FASE 03, cooldown e integração simulada
 
 Em 22/10/2026, a linha de base deste worktree passou em `npm.cmd test` com **50/50** antes das edições. Após a FASE 03, `npm.cmd test` passou com **60/60** (10 casos novos), `npm.cmd run test:performance` com **13/13** e `npm.cmd run test:camera` com **47/47**. Sintaxe de `js/*.js` e dos testes alterados, validação de specs e `git diff --check` passaram. `git diff --cached --check` não apontou erro. O teste diferencial da FASE 01 passou a comparar classificação, cursor, navegação e primeira confirmação; a antiga repetição de cinco letras para a pose mantida foi substituída pela exigência de um evento, mudança intencional desta fase.

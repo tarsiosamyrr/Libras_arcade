@@ -102,6 +102,12 @@ export const CONFIG = {
   MOTION_SMOOTH_WINDOW: 3,         // nº de amostras usadas na média móvel que filtra tremor de câmera
   MOTION_MIN_SAMPLES: 6,           // amostras mínimas antes de avaliar o gesto
   MOTION_MIN_SPAN: 0.26,           // deslocamento mínimo p/ contar como movimento de verdade
+  MOTION_INTENT_WINDOW_MS: 400,    // janela recente para distinguir deslocamento dirigido de tremor acumulado
+  MOTION_INTENT_MIN_SPAN: 0.06,    // deslocamento líquido recente que suspende o hold da pose-base
+  MOTION_INTENT_GRACE_MS: 300,     // espera curta por continuação antes de devolver a pose ao hold estático
+  MOTION_REARM_STILL_MS: 250,      // pausa observável da ponta antes de outro J/Z após sinal dinâmico
+  MOTION_REARM_STILL_SPAN: 0.04,   // raio normalizado da ponta durante essa pausa
+  MOTION_ANCHOR_STILL_SPAN: 0.03,  // ignora amostras estacionárias anteriores ao início do trajeto
   J_TURN_ANGLE_ON: 35,             // graus de curva mínima no trajeto p/ reconhecer o gancho do J
   J_CURVINESS_ON: 1.15,            // trajeto/deslocamento-reto mínimo p/ considerar "curvo"
   Z_DIRECTION_FLIPS_ON: 2,         // nº mínimo de inversões horizontais p/ reconhecer o zigue-zague do Z
@@ -638,6 +644,11 @@ export class LibrasEngine extends EventTarget {
     this._motionBuffer = [];
     this._motionLastBaseAt = null;
     this._motionInProgress = false;
+    this._motionLastIntentAt = null;
+    this._motionNeedsSettle = false;
+    this._motionRearmStart = null;
+    this._motionRearmX = 0;
+    this._motionRearmY = 0;
 
     // buffer do gesto de navegação (deslizar a mão da esquerda pra direita)
     this._navBuffer = [];
@@ -677,7 +688,16 @@ export class LibrasEngine extends EventTarget {
     // ----- mão direita: classificação de letra (o que a v1 inteira já fazia) -----
     if (!right) {
       this.state.rightHand = { present: false };
-      this._reset();
+      this.resetHold();
+      this.state.letter = null;
+      this.state.score = 0;
+      this.state.features = null;
+      this._motionRearmStart = null;
+      // Uma falha breve da mão pode ocorrer no meio de J/Z. A janela de graça
+      // preserva só a trajetória ativa; resetTracking() sempre limpa a sessão.
+      if (this._motionLastBaseAt === null || nowMs - this._motionLastBaseAt > CONFIG.MOTION_BASE_GRACE_MS) {
+        this._resetMotion();
+      }
       this._advanceConfirmation(null, nowMs);
       this._emit();
       return this.state;
@@ -693,19 +713,28 @@ export class LibrasEngine extends EventTarget {
     this.state.letter = score >= CONFIG.MIN_SCORE ? letter : null;
     this.state.score = score;
 
-    // J/Z recebem prioridade quando a pose-base realmente se move; uma
-    // pose-base imóvel continua elegível ao hold estático. Durante a espera,
-    // a classificação segue ativa, mas não acumulamos novas trajetórias.
-    const canTrackMotion = this.state.recognitionPhase === 'READY' || this.state.recognitionPhase === 'STABILIZING';
-    const motionLetter = gateOpen && canTrackMotion ? this._trackMotionSigns(rightLm, features, scale, nowMs) : null;
-    if (motionLetter) {
+    // Observar movimento durante cooldown permite D→Z/I→J. Um trajeto que
+    // termina antes dos 900 ms é descartado; só a intenção nova e válida pode
+    // emitir depois do prazo. Após J/Z, exige-se pausa antes de outro trajeto.
+    if (this._motionNeedsSettle) this._observeMotionRearm(rightLm, features, scale, nowMs);
+    const waiting = this.state.recognitionPhase === 'CONFIRMED' ||
+      this.state.recognitionPhase === 'COOLDOWN' || this.state.recognitionPhase === 'WAIT_RELEASE';
+    const motionLetter = gateOpen && !this._motionNeedsSettle
+      ? this._trackMotionSigns(rightLm, features, scale, nowMs) : null;
+    if (motionLetter && waiting && nowMs - this._confirmedAt < CONFIG.CONFIRM_COOLDOWN_MS) {
+      this._resetMotion();
+      this._advanceConfirmation(this._confirmedLetter, nowMs);
+    } else if (motionLetter) {
       this._confirm(motionLetter, nowMs);
-    } else if (gateOpen && canTrackMotion && this._motionInProgress) {
-      // Descartar apenas o candidato estático, preservando o progresso visual
-      // e o buffer da trajetória que ainda está sendo desenhada.
-      this._holdStart = null;
-      this._holdKey = null;
-      this.state.recognitionPhase = 'STABILIZING';
+    } else if (gateOpen && this._motionInProgress) {
+      if (waiting) {
+        // Movimento em curso não equivale a liberação nem a troca estática.
+        this._advanceConfirmation(this._confirmedLetter, nowMs);
+      } else {
+        this._holdStart = null;
+        this._holdKey = null;
+        this.state.recognitionPhase = 'STABILIZING';
+      }
     } else {
       this._advanceConfirmation(gateOpen ? this.state.letter : null, nowMs);
     }
@@ -733,6 +762,8 @@ export class LibrasEngine extends EventTarget {
     this._released = false;
     this._changeLetter = null;
     this._changeStart = null;
+    this._motionNeedsSettle = false;
+    this._motionRearmStart = null;
     this._navBuffer = [];
     this.state.hands = 0;
     this.state.fps = 0;
@@ -742,14 +773,14 @@ export class LibrasEngine extends EventTarget {
     this._emit();
   }
 
-  /** Avança confirmação e rearmamento com o timestamp monotônico da inferência, em ms.
-   * Durante cooldown, só observa liberação ou troca estável; não inicia hold nem trajetória.
+  /** Avança confirmação estática e rearmamento com timestamp monotônico, em ms.
+   * Durante cooldown não inicia hold; o update observa trajetórias sem emitir cedo.
    */
   _advanceConfirmation(letter, nowMs) {
     const phase = this.state.recognitionPhase;
     if (phase === 'CONFIRMED' || phase === 'COOLDOWN' || phase === 'WAIT_RELEASE') {
       if (phase === 'CONFIRMED') this.state.recognitionPhase = 'COOLDOWN';
-      if (this._motionBuffer.length) this._resetMotion();
+      if (this._motionBuffer.length && this._motionLastBaseAt === null) this._resetMotion();
 
       if (letter === null) {
         if (this._releaseStart === null) this._releaseStart = nowMs;
@@ -758,7 +789,10 @@ export class LibrasEngine extends EventTarget {
         this._releaseStart = null;
       }
 
-      if (letter && letter !== this._confirmedLetter) {
+      // I/D logo após J/Z são a pose residual da ação já confirmada.
+      const residualBase = this._confirmedLetter === 'J' ? 'I' :
+        (this._confirmedLetter === 'Z' ? 'D' : null);
+      if (letter && letter !== this._confirmedLetter && letter !== residualBase) {
         if (letter !== this._changeLetter) {
           this._changeLetter = letter;
           this._changeStart = nowMs;
@@ -784,6 +818,8 @@ export class LibrasEngine extends EventTarget {
       this._released = false;
       this._changeLetter = null;
       this._changeStart = null;
+      this._motionNeedsSettle = false;
+      this._motionRearmStart = null;
     }
     this._trackHold(letter, nowMs);
   }
@@ -797,6 +833,8 @@ export class LibrasEngine extends EventTarget {
     this._released = false;
     this._changeLetter = null;
     this._changeStart = null;
+    this._motionNeedsSettle = letter === 'J' || letter === 'Z';
+    this._motionRearmStart = null;
     this.state.recognitionPhase = 'CONFIRMED';
     this.dispatchEvent(new CustomEvent('signconfirmed', { detail: { letter } }));
   }
@@ -832,6 +870,29 @@ export class LibrasEngine extends EventTarget {
     return Math.min(1, (nowMs - this._holdStart) / CONFIG.HOLD_MS);
   }
 
+  /** Rearma J/Z só após uma pausa observável na pose-base, em ms monotônicos.
+   * Permanecer em I/D não rearma a confirmação estática da pose residual.
+   */
+  _observeMotionRearm(lm, f, scale, nowMs) {
+    const basePresent = this._confirmedLetter === 'J' ? isPinkyUpBase(f) : isIndexUpBase(f);
+    if (!basePresent) {
+      this._motionRearmStart = null;
+      return;
+    }
+    const tip = lm[this._confirmedLetter === 'J' ? LM.PINKY_TIP : LM.INDEX_TIP];
+    const x = tip.x / scale;
+    const y = tip.y / scale;
+    if (this._motionRearmStart === null ||
+        Math.hypot(x - this._motionRearmX, y - this._motionRearmY) > CONFIG.MOTION_REARM_STILL_SPAN) {
+      this._motionRearmStart = nowMs;
+      this._motionRearmX = x;
+      this._motionRearmY = y;
+    } else if (nowMs - this._motionRearmStart >= CONFIG.MOTION_REARM_STILL_MS) {
+      this._motionNeedsSettle = false;
+      this._motionRearmStart = null;
+    }
+  }
+
   _trackMotionSigns(lm, f, scale, nowMs) {
     const pinkyBase = isPinkyUpBase(f);
     const indexBase = !pinkyBase && isIndexUpBase(f);
@@ -853,10 +914,20 @@ export class LibrasEngine extends EventTarget {
       this._motionKey = key;
       this._motionBuffer = [];
       this._motionInProgress = false;
+      this._motionLastIntentAt = null;
     }
 
     if (activeKey) {
-      this._motionBuffer.push({ x: tip.x / scale, y: tip.y / scale, t: nowMs });
+      const point = { x: tip.x / scale, y: tip.y / scale, t: nowMs };
+      const anchor = this._motionBuffer[0];
+      if (this._motionLastIntentAt === null && anchor &&
+          Math.hypot(point.x - anchor.x, point.y - anchor.y) < CONFIG.MOTION_ANCHOR_STILL_SPAN) {
+        // A pose-base parada não desloca o meio da trajetória J/Z futura.
+        this._motionBuffer[0] = point;
+        this._motionBuffer.length = 1;
+      } else {
+        this._motionBuffer.push(point);
+      }
       while (this._motionBuffer.length > 0 && nowMs - this._motionBuffer[0].t > CONFIG.MOTION_WINDOW_MS) {
         this._motionBuffer.shift();
       }
@@ -866,15 +937,31 @@ export class LibrasEngine extends EventTarget {
 
     const smoothed = smoothPath(this._motionBuffer, CONFIG.MOTION_SMOOTH_WINDOW);
     const traveled = pathLength(smoothed);
-    this._motionInProgress = traveled >= CONFIG.MOTION_MIN_SPAN * 0.5;
+    // Comprimento acumulado cresce até com tremor alternado. Só um deslocamento
+    // líquido recente indica intenção de desenhar J/Z; ao cessar, o hold volta.
+    const last = smoothed[smoothed.length - 1];
+    let recentStart = smoothed.length - 1;
+    while (recentStart > 0 && last.t - smoothed[recentStart - 1].t <= CONFIG.MOTION_INTENT_WINDOW_MS) recentStart--;
+    if (smoothed.length >= CONFIG.MOTION_SMOOTH_WINDOW &&
+        Math.hypot(last.x - smoothed[recentStart].x, last.y - smoothed[recentStart].y) >= CONFIG.MOTION_INTENT_MIN_SPAN) {
+      this._motionLastIntentAt = nowMs;
+    }
+    this._motionInProgress = this._motionLastIntentAt !== null &&
+      nowMs - this._motionLastIntentAt <= CONFIG.MOTION_INTENT_GRACE_MS;
+    if (this._motionLastIntentAt !== null && !this._motionInProgress) {
+      this._resetMotion();
+      return null;
+    }
 
     const spanProgress = Math.min(0.95, traveled / CONFIG.MOTION_MIN_SPAN);
-    if (spanProgress > (this.state.holdProgress || 0)) {
+    const canShowProgress = this.state.recognitionPhase === 'READY' ||
+      this.state.recognitionPhase === 'STABILIZING';
+    if (canShowProgress && this._motionInProgress && spanProgress > (this.state.holdProgress || 0)) {
       this.state.holdLetter = key;
       this.state.holdProgress = spanProgress;
     }
 
-    if (this._motionBuffer.length < CONFIG.MOTION_MIN_SAMPLES) return null;
+    if (!this._motionInProgress || this._motionBuffer.length < CONFIG.MOTION_MIN_SAMPLES) return null;
     if (traveled < CONFIG.MOTION_MIN_SPAN) return null;
 
     if (key === 'J') {
@@ -903,6 +990,7 @@ export class LibrasEngine extends EventTarget {
     this._motionBuffer = [];
     this._motionLastBaseAt = null;
     this._motionInProgress = false;
+    this._motionLastIntentAt = null;
   }
 
   /** Rastreia o pulso de qualquer mão detectada em busca do gesto de

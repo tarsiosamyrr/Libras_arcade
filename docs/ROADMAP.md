@@ -65,7 +65,7 @@ O stream fica em `video.srcObject`; o modelo e identificador de rAF ficam no mó
 
 Canvas interno 640×480, restrições de captura reduzidas, detecção apenas com `currentTime` novo, intervalo de 50 ms, desenho agrupado de conexões e caches parciais de UI já existem. Nada foi otimizado na FASE 00. CPU/RAM, latência média/p95, tarefas longas e impacto de resolução continuam sem baseline. As simulações de FPS não são benchmark de hardware.
 
-## Plano técnico — FASES 01 a 03 implementadas em seus respectivos worktrees
+## Plano técnico — FASES 01 a 03.1 implementadas em seus respectivos worktrees
 
 Cada fase depende da conclusão/revisão da anterior e de autorização explícita. As ações abaixo delimitam investigação e aceite; detalhes de implementação e testes devem ser definidos a partir da baseline, sem decisões antecipadas de framework, Worker ou modelo.
 
@@ -74,6 +74,7 @@ Cada fase depende da conclusão/revisão da anterior e de autorização explíci
 | 01 — CPU, RAM e inferência | `vision.js`, `app.js` e testes/documentação | Implementada e verificada automaticamente: FPS/latências, buffers limitados, cadeia única, Canvas, baseline por modo/menu/diagnóstico e avaliação rVFC/Worker. Resolução preservada. Ver relatório para números e limites: sem CPU/RAM total ou homologação de precisão por webcam. |
 | 02 — Ciclo de vida | `vision.js`, `app.js`, `game.js`, `forca.js`, `ui.js` | Implementação integrada no diretório de trabalho e testes sintéticos executados; Política em [Fase 02 — câmera e recursos](fase-02-camera-recursos.md). Falha de import remoto e validação com webcam real continuam pendentes. |
 | 03 — Cooldown e fluidez | `libras.js`, `ui.js`, testes/documentação | Implementado e verificado automaticamente: estados de confirmação e rearmamento sem interromper inferência, renderização ou navegação; três modos testados com relógio controlado. Homologação com webcam pendente. |
+| 03.1 — Arbitragem estática/dinâmica | `libras.js`, testes de integração e documentação | Correção implementada e testada em cenários sintéticos: D/I com pequenos ajustes, D→Z/I→J, pose residual J→I/Z→D, trajetórias consecutivas e perda breve de landmarks. Nenhuma regra geométrica de outras letras foi recalibrada. Precisão e custos com webcam seguem pendentes. |
 | 04 — Cronômetro | `game.js`, UI e testes/documentação | Rever a duração e a contagem do cronômetro do Soletrar considerando a espera inevitável entre letras. Ainda não iniciada; requer autorização própria. |
 | 05 — Qualidade | Regras, estados, relógios, eventos e UI | Instituir suíte proporcional com dados, classificação sintética, empate/ambiguidade, hold/J/Z, pontuação, progressão, reinício, timeout, erros e integração dos três modos. Aceite: comandos reproduzíveis e separação clara entre testes automáticos e webcam real. |
 | 06 — Pesquisa Python | Experimentos separados, documentação e futuro contrato de exportação | Definir coleta consentida, rótulos, normalização, divisão por participante/sessão, matriz de confusão e comparação estático/temporal. Avaliar formato viável no navegador. Aceite: protocolo e resultados rastreáveis; nenhum backend ou coleta automática presumidos. |
@@ -99,4 +100,6 @@ Os itens LIB-01 a LIB-06 foram relatados após teste manual com webcam. O relato
 | LIB-05 | Algumas letras não tiveram suporte funcional adequado. | Cobertura nominal A–Z não comprova uso confiável. Identificar letras e condições específicas em avaliação futura. |
 | LIB-06 | Ainda são desejadas melhorias de CPU, RAM e fluidez. | Sem nova medição de CPU/RAM real; investigar com entrada e hardware comparáveis antes de otimizar. |
 
-Próximo passo pendente: homologar LIB-03/04 com webcam real, incluindo letras iguais, distintas, J/Z, três modos e diferentes velocidades de movimento. Não iniciar a FASE 04 sem autorização.
+Após a FASE 03, o teste manual relatou desaparecimento da sensação de travamento, além de dificuldades com Y/M/S/E/R, Q e D e percepção de ausência de J/Z. O painel de candidata mostra apenas a classificação estática; J/Z constam do motor, do guia e dos bancos. Os demais relatos exigem amostras e avaliação por letra antes de atribuir causa. A auditoria pré-review reproduziu no código três caminhos da FASE 03: movimento parcial bloqueando D/I, D→Z/I→J sem rearmamento e confirmação residual J→I/Z→D. A [FASE 03.1](../specs/changes/2026-10-23-arbitragem-estatico-dinamico.md) corrigiu esses caminhos em testes sintéticos, sem alegar precisão com webcam.
+
+Próximo passo pendente: revisar independentemente a FASE 03.1 e validar com webcam real D/I, J/Z, letras iguais/distintas, três modos, distâncias, orientações e velocidades. Regras de Y/M/S/E/R/Q e desempenho CPU/RAM permanecem para investigação própria. Não iniciar a FASE 03.2 ou a FASE 04 sem autorização.

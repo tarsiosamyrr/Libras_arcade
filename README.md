@@ -2,7 +2,7 @@
 
 Jogo educacional de datilologia em Libras, desenvolvido no contexto de uma Liga de Inteligência Artificial. A webcam fornece landmarks da mão para um classificador geométrico executado no navegador, que alimenta os modos **Treino, Soletrar e Forca**.
 
-Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02, as correções de armazenamento e estatísticas da FASE 02.1 e o cooldown temporal da FASE 03. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
+Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02, as correções de armazenamento e estatísticas da FASE 02.1, o cooldown da FASE 03 e a arbitragem estática/dinâmica da FASE 03.1. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
 
 Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arcade).
 
@@ -42,8 +42,9 @@ Alternativas existentes de desenvolvimento: Live Server do VS Code ou `npx serve
 | Escolher um modo | Clique/toque ou cursor do indicador com pinça sobre o cartão. |
 | Escolher nível inicial | Clique/toque nos números 1–3; não há seleção de nível por gesto implementada. |
 | Confirmar letra estática | Sustentar a candidata por 600 ms, com tolerância de 250 ms a perda breve da candidata. |
-| Confirmar J/Z | Formar pose-base e executar trajetória; reconhecimento experimental separado do hold. |
-| Preparar a próxima letra | Após confirmar, aguardar ao menos 900 ms. Para repetir a mesma letra, deixar de apresentar candidata por 250 ms; para outra letra, mantê-la detectada por 300 ms. A nova confirmação ainda exige hold de 600 ms ou trajetória J/Z. |
+| Confirmar J/Z | Formar pose-base e executar uma trajetória nova; pequenos ajustes da pose-base não cancelam indefinidamente o hold de I/D. |
+| Preparar a próxima letra | Após confirmar, aguardar ao menos 900 ms. Para repetir uma letra estática, deixar de apresentar candidata por 250 ms; para outra letra estática, mantê-la detectada por 300 ms. J/Z podem ser observados durante a espera, mas só uma trajetória válida concluída após o cooldown emite evento. |
+| Após J/Z | I/D são poses residuais de J/Z e não confirmam automaticamente. Para sinalizar I/D em seguida, libere a candidata por 250 ms ou faça outra pose estável. Para outro J/Z com a mesma pose-base, pause a ponta do dedo e desenhe novo trajeto. |
 | Abrir guia | Botões “Guia do alfabeto” ou “Aprender Libras”. |
 | Sair da rodada | Botão Sair, `Esc`, pinça sobre Sair ou deslize da mão da esquerda para a direita na imagem espelhada. |
 | Fechar guia | Clique em Fechar, `Esc`, deslize ou punho fechado fora das telas de jogo. |
@@ -66,7 +67,7 @@ O MediaPipe detecta a mão e seus 21 pontos; a classificação das letras é fei
 
 O cooldown bloqueia apenas novas confirmações. Vídeo, inferência, desenho, cursor e gesto de voltar continuam ativos. O texto discreto na barra inferior indica detecção, confirmação, preparação ou prontidão; a barra circular zera durante a espera. O valor de 900 ms é uma hipótese inicial para teste com jogadores. No Soletrar, o cronômetro por letra continua em curso durante a espera por cooldown/rearmamento; sua duração será revista somente na FASE 04.
 
-J/Z usam histórico de até 1.300 ms, suavização por 3 amostras, mínimo de 6 amostras e critérios de trajetória. O reconhecimento estático continua ativo durante esse processamento, podendo competir com a pose-base. Há ainda desempates por ordem de regras, como o caso sintético de I/Y registrado na auditoria. Iluminação, oclusão, escala, posição, orientação e frequência de frames precisam de avaliação real.
+J/Z usam histórico de até 1.300 ms, suavização por 3 amostras, mínimo de 6 amostras e critérios de trajetória. Na FASE 03.1, o hold da pose-base só é suspenso por deslocamento líquido recente com uma curta tolerância à continuação; trajetória parcial que cessa devolve I/D ao hold. Amostras da pose-base imóvel anteriores ao movimento não entram no desenho. Uma perda de landmarks de até 300 ms pode preservar o trajeto incompleto; pausas/sessões e perdas mais longas o descartam. Isso é uma arbitragem heurística ainda sem calibração com webcam. Há também desempates por ordem de regras, como o caso sintético de I/Y registrado na auditoria. Iluminação, oclusão, escala, posição, orientação e frequência de frames precisam de avaliação real.
 
 A configuração atual detecta **uma mão** (`numHands: 1`), atribui a primeira detecção ao papel lógico `right` e mantém `REQUIRE_LEFT_HAND: false`. Não identifica lateralidade nesse caminho. O painel de duas mãos é um resquício de outra configuração; ativar só a flag da esquerda impediria confirmações.
 
@@ -124,7 +125,7 @@ O snapshot retorna FPS, callbacks, inferências e callbacks ignorados por frame 
 
 Há comparação com MediaPipe real, vídeo controlado sem mãos e os três modos em Edge/Windows. Protocolo, números, arquivos brutos e avaliação de Worker/rVFC estão no [relatório da FASE 01](docs/performance/FASE01.md). O ganho comprovado é a remoção de trabalho redundante do Canvas; variação de tempo do modelo não é atribuída à alteração. Não há medição de CPU/RAM total nem homologação de precisão por webcam.
 
-`detectForVideo()` continua síncrono na thread principal. Permanecem alocações de eventos, objetos e arrays; o diagnóstico aberto serializa JSON a cada frame. Worker e `requestVideoFrameCallback` não foram adotados, conforme justificativas e limites registrados no relatório.
+`detectForVideo()` continua síncrono na thread principal. A FASE 03.1 observa trajetórias também durante cooldown para permitir uma nova intenção D→Z/I→J; não há timers por frame nem alteração da frequência de inferência, mas esse caminho faz trabalho adicional quando há pose-base J/Z. Permanecem alocações de eventos, objetos e arrays; o diagnóstico aberto serializa JSON a cada frame. CPU/RAM após a mudança não foram medidos. Worker e `requestVideoFrameCallback` não foram adotados, conforme justificativas e limites registrados no relatório.
 
 ## Webcam, privacidade e erros
 
@@ -140,7 +141,7 @@ Falhas de permissão, câmera ausente ou ocupada e erros de inferência mostram 
 
 ## Testes e validação
 
-Os testes focados das FASES 01 a 03 usam o runner nativo do Node. A suíte atual contém **60 testes**: métricas/regressão, persistência e motores, além de integração simulada do boot, navegação, ciclo de vida e confirmação temporal. A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
+Os testes focados das FASES 01 a 03.1 usam o runner nativo do Node. A suíte atual inclui os **60 testes anteriores** e cenários adicionais de arbitragem em `tests/app-ui.integration.test.cjs`: D/I, J/Z, cooldown, pose residual, perdas de landmarks e troca de sessão. A contagem e os resultados executados estão em [specs/testing.md](specs/testing.md). A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
 
 ```powershell
 npm.cmd test
@@ -157,7 +158,7 @@ node --test tests/phase02.test.mjs
 node --experimental-vm-modules --test tests/app-ui.integration.test.cjs
 ```
 
-`tests/performance.test.cjs` e a integração de `tests/app-ui.integration.test.cjs` usam `vm.SyntheticModule`/`vm.SourceTextModule`, indisponíveis no Node 24.18.0 sem `--experimental-vm-modules`; por isso `test` e `test:camera` incluem a flag. O harness testa módulos reais com DOM, relógio, câmera e MediaPipe simulados; não comprova compatibilidade de navegador, webcam física, permissões do sistema ou execução real de GPU/WASM. A validação com webcam real não foi executada. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
+`tests/performance.test.cjs` e a integração de `tests/app-ui.integration.test.cjs` usam `vm.SyntheticModule`/`vm.SourceTextModule`, indisponíveis no Node 24.18.0 sem `--experimental-vm-modules`; por isso `test` e `test:camera` incluem a flag. O harness testa módulos reais com DOM, relógio, câmera e MediaPipe simulados; não comprova compatibilidade de navegador, webcam física, permissões do sistema ou execução real de GPU/WASM. Houve relatos manuais com webcam, mas a FASE 03.1 não executou um protocolo controlado de precisão ou desempenho real. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).
 
 Precisão por webcam, navegação completa, acessibilidade e compatibilidade entre navegadores permanecem sem homologação. O benchmark sem mãos não mede a precisão das letras; os demais achados da auditoria seguem no roadmap.
 

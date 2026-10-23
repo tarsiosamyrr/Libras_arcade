@@ -22,6 +22,41 @@ function temporalRig(r) {
   return { engine, signs, sample };
 }
 
+// Landmarks sintéticos só exercitam a arbitragem temporal, não a validade dos sinais reais.
+const J_PATH = [[.2,.1],[.2,.2],[.2,.3],[.2,.4],[.2,.5],[.2,.6],[.25,.7],[.35,.75],[.45,.7],[.5,.6],[.5,.5]];
+const Z_PATH = Array.from({ length: 25 }, (_, i) => [i <= 8 ? i*.1 : i <= 16 ? (16-i)*.1 : (i-16)*.1, .1+i*.02]);
+
+function pose(base, dx = 0, dy = 0) {
+  const lm = Array.from({ length: 21 }, () => ({ x: .5, y: .75, z: 0 }));
+  lm[0] = { x: .5, y: .8, z: 0 };
+  for (const i of [5, 9, 13, 17]) lm[i] = { x: .5, y: .6, z: 0 };
+  if (base === 'A') return lm;
+  const mcp = base === 'J' || base === 'I' ? 17 : 5;
+  const pip = base === 'J' || base === 'I' ? 18 : 6;
+  const tip = base === 'J' || base === 'I' ? 20 : 8;
+  lm[mcp] = { x: .45, y: .6, z: 0 };
+  lm[pip] = { x: .45, y: .5, z: 0 };
+  lm[tip] = { x: .45 + dx * .2, y: .35 + dy * .2, z: 0 };
+  return lm;
+}
+
+function recognitionRig(r) {
+  const engine = new r.LibrasEngine();
+  const signs = [];
+  engine.addEventListener('signconfirmed', (event) => signs.push([event.detail.letter, engine._confirmedAt]));
+  const frame = (base, at, dx = 0, dy = 0) => {
+    r.clock.now = at;
+    return engine.update({ landmarks: base ? [pose(base, dx, dy)] : [] }, at, 20);
+  };
+  const hold = (base, start, end, step = 50) => {
+    for (let at = start; at <= end; at += step) frame(base, at);
+  };
+  const path = (base, start, step = 50, points = base === 'J' ? J_PATH : Z_PATH) => {
+    points.forEach(([dx, dy], index) => frame(base, start + index * step, dx, dy));
+  };
+  return { engine, signs, frame, hold, path };
+}
+
 test('cooldown confirma gesto estático uma vez e mantém a pose prolongada bloqueada', async () => {
   const r = await browserRuntime();
   const { engine, signs, sample } = temporalRig(r);
@@ -157,6 +192,276 @@ test('pose-base imóvel continua confirmável como letra estática', async () =>
   const candidate = engine.state.letter;
   for (let at = 150; at <= 750; at += 50) engine.update({ landmarks: [lm] }, at, 20);
   assert.deepEqual(signs, [candidate]);
+});
+
+test('D com pequenos ajustes contínuos confirma sem o trajeto de Z', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let i = 0; i < 60; i++) {
+    const dx = i % 2 ? .08 : 0;
+    const state = rig.frame('Z', 100 + i * 50, dx);
+    assert.equal(state.letter, 'D');
+  }
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['D']);
+});
+
+test('D imóvel e prolongado confirma uma vez', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.hold('Z', 100, 2500);
+  assert.deepEqual(rig.signs, [['D', 700]]);
+});
+
+test('I com pequenas oscilações confirma sem um falso J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let i = 0; i < 50; i++) rig.frame('J', 100 + i * 50, i % 2 ? .08 : 0);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['I']);
+});
+
+test('D seguido de Z pode completar nova trajetória sem retirar a mão', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.hold('Z', 100, 700);
+  rig.path('Z', 800);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['D', 'Z']);
+  assert.ok(rig.signs[1][1] >= 1600);
+});
+
+test('Z seguido de D após liberação confirma nova intenção', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('Z', 100);
+  rig.frame(null, 1400);
+  rig.frame(null, 1650);
+  rig.hold('Z', 2000, 2700);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['Z', 'D']);
+});
+
+test('Z seguido de sua pose-base residual não confirma D', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('Z', 100);
+  rig.hold('Z', 1350, 3100);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['Z']);
+});
+
+test('I seguido de J pode completar nova trajetória sem retirar a mão', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.hold('J', 100, 700);
+  rig.path('J', 1200);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['I', 'J']);
+  assert.ok(rig.signs[1][1] >= 1600);
+});
+
+test('J seguido de I após liberação confirma nova intenção', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('J', 100);
+  rig.frame(null, 700);
+  rig.frame(null, 950);
+  rig.hold('J', 1500, 2200);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J', 'I']);
+});
+
+test('J seguido de sua pose-base residual não confirma I', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('J', 100);
+  rig.hold('J', 650, 2400);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+});
+
+for (const [letter, speed, step] of [
+  ['J', 'lenta', 100], ['J', 'rápida', 30],
+  ['Z', 'lenta', 50], ['Z', 'rápida', 30]
+]) {
+  test(`trajetória ${letter} ${speed} confirma uma vez pelo update`, async () => {
+    const r = await browserRuntime();
+    const rig = recognitionRig(r);
+    rig.path(letter, 100, step);
+    assert.deepEqual(rig.signs.map(([value]) => value), [letter]);
+  });
+}
+
+for (const letter of ['J', 'Z']) {
+  test(`trajetória ${letter} incompleta não produz sinal dinâmico`, async () => {
+    const r = await browserRuntime();
+    const rig = recognitionRig(r);
+    const partial = (letter === 'J' ? J_PATH : Z_PATH).slice(0, letter === 'J' ? 6 : 13);
+    rig.path(letter, 100, 50, partial);
+    const [dx, dy] = partial.at(-1);
+    for (let at = 100 + partial.length * 50; at <= 2600; at += 50) rig.frame(letter, at, dx, dy);
+    assert.equal(rig.signs.some(([value]) => value === letter), false);
+    assert.ok(rig.signs.some(([value]) => value === (letter === 'J' ? 'I' : 'D')));
+  });
+
+  test(`trajetória ${letter} tolera timestamps irregulares dentro da janela`, async () => {
+    const r = await browserRuntime();
+    const rig = recognitionRig(r);
+    let at = 100;
+    for (const [dx, dy] of letter === 'J' ? J_PATH : Z_PATH) {
+      rig.frame(letter, at, dx, dy);
+      at += at % 3 === 0 ? 35 : 55;
+    }
+    assert.deepEqual(rig.signs.map(([value]) => value), [letter]);
+  });
+
+  test(`perda breve de landmarks no trajeto ${letter} não reutiliza amostras antigas`, async () => {
+    const r = await browserRuntime();
+    const rig = recognitionRig(r);
+    const points = letter === 'J' ? J_PATH : Z_PATH;
+    const gap = letter === 'J' ? 6 : 13;
+    points.forEach(([dx, dy], index) => {
+      const at = 100 + index * 50;
+      if (index === gap) rig.frame(null, at);
+      else rig.frame(letter, at, dx, dy);
+    });
+    assert.deepEqual(rig.signs.map(([value]) => value), [letter]);
+  });
+
+  test(`perda longa de landmarks descarta o trajeto ${letter} anterior`, async () => {
+    const r = await browserRuntime();
+    const rig = recognitionRig(r);
+    const points = letter === 'J' ? J_PATH : Z_PATH;
+    rig.path(letter, 100, 50, points.slice(0, letter === 'J' ? 6 : 13));
+    rig.frame(null, 1100);
+    assert.equal(rig.engine._motionBuffer.length, 0);
+    const tail = points.slice(letter === 'J' ? 6 : 13);
+    rig.path(letter, 1200, 50, tail);
+    assert.equal(rig.signs.some(([value]) => value === letter), false);
+  });
+}
+
+test('trajeto Z completo dentro do cooldown é descartado e novo trajeto rearma D', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.hold('Z', 100, 700);
+  rig.path('Z', 800, 30);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['D']);
+  rig.hold('Z', 1600, 2000);
+  rig.path('Z', 2100);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['D', 'Z']);
+});
+
+test('trajetória observada durante cooldown não exibe hold de confirmação', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.hold('Z', 100, 700);
+  Z_PATH.slice(0, 8).forEach(([dx, dy], index) => {
+    const state = rig.frame('Z', 800 + index * 50, dx, dy);
+    assert.equal(state.recognitionPhase, 'COOLDOWN');
+    assert.equal(state.holdProgress, 0);
+  });
+});
+
+test('J e Z podem seguir um ao outro após troca estável da pose-base', async () => {
+  const r = await browserRuntime();
+  for (const [first, second] of [['J', 'Z'], ['Z', 'J']]) {
+    const rig = recognitionRig(r);
+    rig.path(first, 100);
+    const confirmedAt = rig.engine._confirmedAt;
+    rig.hold(second, confirmedAt + 350, confirmedAt + 1050);
+    rig.path(second, confirmedAt + 1150);
+    assert.deepEqual(rig.signs.map(([letter]) => letter), [first, second]);
+  }
+});
+
+test('J e Z consecutivos exigem novo trajeto após a pose-base estável', async () => {
+  const r = await browserRuntime();
+  for (const letter of ['J', 'Z']) {
+    const rig = recognitionRig(r);
+    rig.path(letter, 100);
+    const firstAt = rig.engine._confirmedAt;
+    rig.hold(letter, firstAt + 300, firstAt + 1100);
+    assert.deepEqual(rig.signs.map(([value]) => value), [letter]);
+    rig.path(letter, firstAt + 1200);
+    assert.deepEqual(rig.signs.map(([value]) => value), [letter, letter]);
+  }
+});
+
+test('reset de sessão durante trajetória descarta a parte anterior', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('J', 100, 50, J_PATH.slice(0, 6));
+  rig.engine.resetTracking();
+  assert.equal(rig.engine._motionBuffer.length, 0);
+  J_PATH.slice(6).forEach(([dx, dy], index) => rig.frame('J', 450 + index * 50, dx, dy));
+  assert.deepEqual(rig.signs, []);
+  rig.path('J', 1000);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+});
+
+test('troca de Treino para Forca descarta trajetória pendente e roteia só o novo J', async () => {
+  const r = await browserRuntime();
+  r.clickStart();
+  await r.settle();
+  r.cards[0].click();
+  const engine = instance(r, r.LibrasEngine);
+  const forca = instance(r, r.ForcaGame);
+  let videoFrame = 0;
+  const frame = (at, dx, dy) => {
+    r.clock.now = at;
+    r.setDetectionResult({ landmarks: [pose('J', dx, dy)] });
+    r.video.currentTime = ++videoFrame;
+    r.raf.step(at);
+  };
+  J_PATH.slice(0, 6).forEach(([dx, dy], index) => frame(100 + index * 50, dx, dy));
+  r.elements.get('#exit-btn').click();
+  assert.equal(engine._motionBuffer.length, 0);
+  r.cards[2].click();
+  J_PATH.slice(6).forEach(([dx, dy], index) => frame(450 + index * 50, dx, dy));
+  assert.equal(engine.dispatchCount('signconfirmed'), 0);
+  J_PATH.forEach(([dx, dy], index) => frame(1000 + index * 50, dx, dy));
+  assert.equal(engine.dispatchCount('signconfirmed'), 1);
+  assert.equal(forca.guessed.has('J'), true);
+  assert.equal(r.frames.size, 1);
+});
+
+test('pausa e retomada descartam trajetória incompleta sem duplicar loop', async () => {
+  const r = await browserRuntime();
+  r.clickStart();
+  await r.settle();
+  r.cards[0].click();
+  const engine = instance(r, r.LibrasEngine);
+  let videoFrame = 0;
+  const frame = (at, lm) => {
+    r.clock.now = at;
+    r.setDetectionResult({ landmarks: lm ? [lm] : [] });
+    r.video.currentTime = ++videoFrame;
+    r.raf.step(at);
+  };
+  J_PATH.slice(0, 6).forEach(([dx, dy], index) => frame(100 + index * 50, pose('J', dx, dy)));
+  r.document.hidden = true;
+  r.dispatchDocument('visibilitychange');
+  assert.equal(engine._motionBuffer.length, 0);
+  r.document.hidden = false;
+  r.dispatchDocument('visibilitychange');
+  await r.settle();
+  J_PATH.slice(6).forEach(([dx, dy], index) => frame(450 + index * 50, pose('J', dx, dy)));
+  assert.equal(engine.dispatchCount('signconfirmed'), 0);
+  J_PATH.forEach(([dx, dy], index) => frame(1000 + index * 50, pose('J', dx, dy)));
+  assert.equal(engine.dispatchCount('signconfirmed'), 1);
+  assert.equal(r.frames.size, 1);
+});
+
+test('manter a pose após confirmação dinâmica não duplica eventos', async () => {
+  const r = await browserRuntime();
+  for (const letter of ['J', 'Z']) {
+    const rig = recognitionRig(r);
+    rig.path(letter, 100);
+    const lastAt = 100 + (letter === 'J' ? J_PATH.length - 1 : Z_PATH.length - 1) * 50;
+    rig.hold(letter, lastAt + 50, lastAt + 3000);
+    assert.deepEqual(rig.signs.map(([value]) => value), [letter]);
+  }
+});
+
+test('letra estática sem relação com J/Z mantém hold e confirmação única', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.hold('A', 100, 2200);
+  assert.deepEqual(rig.signs, [['A', 700]]);
 });
 
 test('webcam simulada mantém inferência, feedback e uma jogada por pose nos três modos', async () => {
