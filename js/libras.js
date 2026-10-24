@@ -112,6 +112,8 @@ export const CONFIG = {
   MOTION_ANCHOR_STILL_SPAN: 0.03,  // ignora amostras estacionárias anteriores ao início do trajeto
   J_TURN_ANGLE_ON: 35,             // graus de curva mínima no trajeto p/ reconhecer o gancho do J
   J_CURVINESS_ON: 1.15,            // trajeto/deslocamento-reto mínimo p/ considerar "curvo"
+  J_STEM_MIN_STEPS: 3,            // passos consecutivos de descida na trajetória
+  J_STEM_MAX_LATERAL_RATIO: 0.25, // deriva lateral máxima da haste em relação à descida
   J_MIN_VERTICAL_NET: 0.10,       // avanço vertical líquido mínimo do gancho, na escala da mão
   J_MIN_VERTICAL_CONSISTENCY: 0.65, // parte do percurso vertical na direção dominante
   Z_DIRECTION_FLIPS_ON: 2,         // nº mínimo de inversões horizontais p/ reconhecer o zigue-zague do Z
@@ -644,6 +646,19 @@ function verticalDirectionConsistency(pts) {
   return total > 0 ? Math.max(positive, negative) / total : 0;
 }
 
+/** Procura a haste descendente do J sem depender da pose parada antes do trajeto. */
+function hasJStem(pts) {
+  let steps = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i - 1].x;
+    const dy = pts[i].y - pts[i - 1].y;
+    steps = dy > 0 && Math.abs(dx) <= dy * CONFIG.J_STEM_MAX_LATERAL_RATIO
+      ? steps + 1 : 0;
+    if (steps >= CONFIG.J_STEM_MIN_STEPS) return true;
+  }
+  return false;
+}
+
 /** Exige três traços alternados, com a descida/subida do meio no sentido da progressão total. */
 function hasZStrokePattern(pts, minStep) {
   let previousStart = -1, previousEnd = -1;
@@ -1012,6 +1027,10 @@ export class LibrasEngine extends EventTarget {
   }
 
   _trackMotionSigns(lm, f, scale, nowMs) {
+    // Um intervalo sem callbacks também torna o trajeto antigo obsoleto,
+    // mesmo se a mesma pose-base reaparecer no frame seguinte.
+    if (this._motionLastBaseAt !== null &&
+        nowMs - this._motionLastBaseAt > CONFIG.MOTION_BASE_GRACE_MS) this._resetMotion();
     const pinkyBase = isPinkyUpBase(f);
     const indexBase = !pinkyBase && isIndexUpBase(f);
     const activeKey = pinkyBase ? 'J' : (indexBase ? 'Z' : null);
@@ -1128,7 +1147,9 @@ export class LibrasEngine extends EventTarget {
       const turn = turnAngleDeg(smoothed);
       const straight = Math.max(netDisplacement(smoothed), 1e-4);
       const curviness = traveled / straight;
-      if (turn >= CONFIG.J_TURN_ANGLE_ON && curviness >= CONFIG.J_CURVINESS_ON &&
+      // Curvatura sozinha aceita um arco que começa pelo gancho. A haste deve
+      // existir mesmo quando o buffer inclui a pose de preparação anterior.
+      if (hasJStem(smoothed) && turn >= CONFIG.J_TURN_ANGLE_ON && curviness >= CONFIG.J_CURVINESS_ON &&
           Math.abs(last.y - smoothed[0].y) >= CONFIG.J_MIN_VERTICAL_NET &&
           verticalDirectionConsistency(smoothed) >= CONFIG.J_MIN_VERTICAL_CONSISTENCY) {
         this.state.holdProgress = 1;

@@ -1,6 +1,8 @@
-# QA do reconhecimento — FASE 03.3A
+# QA do reconhecimento — FASE 03.3A e 03.3B-1
 
 **Inspeção:** 24/10/2026, branch `feat/fase-03-cooldown`, commit-base `2f565a6`. Esta é uma auditoria de regras e de relatos do usuário; não houve captura de webcam nesta execução. A–Z estão nominalmente em `SUPPORTED_LETTERS`, `LETTERS` e `LETTER_POOL`; `J` e `Z` usam trajetórias. Disponibilidade não significa reconhecimento ou confirmação homologados.
+
+**Atualização 03.3B-1:** o [relatório de 16 diagnósticos, 15 únicos](Libras_Arcade_Analise_Diagnosticos_Fase_03_3B.md) contém confirmações de J quando I era esperado e empates A/O em escore máximo. Os arquivos individuais e landmarks não estão disponíveis neste worktree. A [mudança localizada em J](../../specs/changes/2026-10-24-fase-033b1-j-oa.md) foi reproduzida e verificada sinteticamente; a eficácia com webcam ainda precisa de nova coleta rotulada.
 
 ## Como ler a evidência
 
@@ -22,13 +24,13 @@
 | F | Sim | Estático | Sem relato individual recente | Não homologada | Cadastro/código | Medir candidata e evento |
 | G | Sim | Estático | Oscila; pode confundir com T | Confirmação variável | Relato anterior | Orientação, escore e hold G/T |
 | H | Sim | Estático | Pose percebida como pouco intuitiva | Não homologada | Relato anterior | Comparar H/U/R lateral/frontal |
-| I | Sim | Estático | Detecta, mas intermitente no Soletrar | Confirmação intermitente; empate estrutural com Y | Relato recente; empate sintético/código | Trilha completa em Treino e Soletrar, I/Y/J |
-| J | Sim | Dinâmico | Sem validação recente específica | Não homologada | Código e trajetórias sintéticas | Gancho lento/rápido após I |
+| I | Sim | Estático | Detecta, mas intermitente no Soletrar | Quatro J confirmados quando I era esperado em um ensaio; I posterior encontrou alvo V; empate estrutural com Y | Diagnóstico real resumido; código e fixtures | Repetir I/J rotulados em Treino e Soletrar após a correção |
+| J | Sim | Dinâmico | Falsos J documentados quando I era esperado | J verdadeiro não homologado | Diagnóstico real resumido; trajetórias sintéticas | Medir falso J e perda de J verdadeiro em velocidades diferentes |
 | K | Sim | Estático | Funcionamento satisfatório relatado anteriormente | Não homologada estatisticamente | Relato anterior | Comparar V/K por abertura |
 | L | Sim | Estático | Detectada anteriormente | Demora para confirmar | Relato anterior | `hold_reset` e tempo até evento |
 | M | Sim | Estático | Não identificada | Sem confirmação confiável relatada | Relato recente | Escores M/N/S/A por polegar |
 | N | Sim | Estático | Não identificada | Sem confirmação confiável relatada | Relato recente | Escores N/M/T/A por polegar |
-| O | Sim | Estático | De frente; falha lateralmente, A vence no Soletrar | Intermitente conforme orientação | Relato recente; competição possível no código | Trilha O→A, empate, hold e decisão do Soletrar |
+| O | Sim | Estático | De frente; falha lateralmente, A vence no Soletrar | A/O empatam em 1,00 em alguns frames; A foi rejeitado e O aceito em tentativas distintas | Diagnóstico real resumido; empate reproduzido em fixture | Coletar features O/A/S/C e orientação por tentativa rotulada |
 | P | Sim | Estático | Identificação satisfatória anterior | Não homologada estatisticamente | Relato anterior | Orientação P/K e evento |
 | Q | Sim | Estático | Detectada anteriormente | Pode não confirmar | Relato anterior | Limiar, hold, Q/G por orientação |
 | R | Sim | Estático | Não identificada | Sem confirmação confiável relatada | Relato recente | Cruzamento R/U/H/V e oclusão |
@@ -58,10 +60,10 @@ Os valores abaixo são limiares de **componentes**, não limites de decisão da 
 | H | Dois dedos estendidos/juntos, demais fechados, `sidewaysScore(pointAngleIM)`. | U/R; direção lateral tem platô até 30° e zera a 90° de distância do alvo. |
 | O | Indicador/médio/anelar com `ext` baixo (rampa 0,38–0,65); `thumbMiddlePinch` ≤0,42. | Não testa mindinho, `curl` nem orientação. A/S podem vencer por média; a pose lateral pode alterar distâncias projetadas. |
 | A | Quatro `ext` fechados ≤0,38; `thumbOut` ≥0,315 (limiar específico reduzido). | O/S/E/M/N/T. Se O e A pontuarem igualmente, A vence por preceder O. |
-| C | Quatro `curl` em 0,16–0,40; `thumbMiddlePinch` afastado ≥0,77. | X compartilha gancho do indicador; O compartilha flexão, mas pede pinça próxima. |
+| C | Quatro `curl` em 0,16–0,40; `thumbMiddlePinch` próximo ≤0,42. | X compartilha gancho do indicador e O também pede pinça próxima. A regra executável diverge da dica em `data.js`, que descreve o polegar sem tocar as pontas; requer revisão pedagógica posterior. |
 | I | Indicador/médio/anelar fechados, mindinho estendido; nenhum teste do polegar. | Y usa os mesmos quatro componentes mais `thumbOut`; no ideal, I=Y=1 e I vence. J usa a pose-base e trajetória; movimento em curso suspende hold. |
 | Y | Componentes de I mais `thumbOut` ≥0,45. | Pode perder por empate com I; não há margem mínima ou desempate específico. |
-| J | Pose-base do mindinho com trajetória: ≥6 amostras, deslocamento ≥0,26, curva ≥35°, razão percurso/reta ≥1,15 e avanço vertical ≥0,10. | Intenção parcial suspende I; trajeto incoerente/incompleto é rejeitado. Limites de movimento não provam execução real. |
+| J | Pose-base do mindinho com trajetória: ≥6 amostras, deslocamento ≥0,26, curva ≥35°, razão percurso/reta ≥1,15, avanço vertical ≥0,10 e segmento de 3 passos descendentes com deriva lateral ≤0,25 da descida. | Intenção parcial suspende I; trajeto incoerente/incompleto é rejeitado. Intervalo sem callbacks acima de 300 ms descarta o buffer, mesmo com pose-base retomada. Limites de movimento não provam execução real. |
 | X | `curlIndex` no gancho 0,16–0,40; médio/anelar/mindinho fechados. | Não exige polegar nem orientação; C se outros dedos parecerem curvos e D na transição para indicador reto. |
 | D | Indicador estendido, demais fechados, `thumbMiddlePinch` ≤0,42. | Pose-base de Z; X com gancho parcial. Pequeno movimento não deve impedir o hold, conforme testes sintéticos da FASE 03.1. |
 

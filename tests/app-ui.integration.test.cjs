@@ -275,6 +275,61 @@ test('I detectado com movimento repetitivo do mindinho não perde confirmação 
   assert.deepEqual(rig.signs.map(([letter]) => letter), ['I']);
 });
 
+test('curva invertida da pose I não produz J antes do hold estático', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  const frame = (at, dx, dy) => {
+    const hand = pose('J', dx, dy);
+    hand[4] = { x: .5, y: .6, z: 0 }; // polegar recolhido, sem pinça O nem Y
+    r.clock.now = at;
+    return rig.engine.update({ landmarks: [hand] }, at, 20);
+  };
+  J_PATH.toReversed().forEach(([dx, dy], index) => {
+    const state = frame(100 + index * 50, dx, dy);
+    assert.equal(state.letter, 'I');
+  });
+  const [dx, dy] = J_PATH[0];
+  for (let at = 650; at <= 2000; at += 50) frame(at, dx, dy);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['I']);
+});
+
+test('intervalo sem frames descarta trajetória J incompleta', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('J', 100, 50, J_PATH.slice(0, 6));
+  J_PATH.slice(6).forEach(([dx, dy], index) => rig.frame('J', 800 + index * 50, dx, dy));
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+  rig.path('J', 1400);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+});
+
+test('I após curva invertida chega ao Soletrar sem um J incorreto', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const engine = new r.LibrasEngine();
+  new r.UI(engine, game, new r.ForcaGame());
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  r.cards[1].click();
+  game.target = 'IA';
+  game.wordIndex = 0;
+  const frame = (at, dx, dy) => {
+    const hand = pose('J', dx, dy);
+    hand[4] = { x: .5, y: .6, z: 0 };
+    r.clock.now = at;
+    engine.update({ landmarks: [hand] }, at, 20);
+  };
+  J_PATH.toReversed().forEach(([dx, dy], index) => frame(100 + index * 50, dx, dy));
+  const [dx, dy] = J_PATH[0];
+  for (let at = 650; at <= 2000; at += 50) frame(at, dx, dy);
+  assert.equal(game.wordIndex, 1);
+  const events = diag.read().events;
+  assert.equal(events.filter((event) => event.type === 'signconfirmed').map((event) => event.letter).join(','), 'I');
+  assert.ok(events.some((event) => event.type === 'ui_received' && event.letter === 'I'));
+  assert.ok(events.some((event) => event.type === 'game_decision' &&
+    event.letter === 'I' && event.expected === 'I' && event.reason === 'accepted'));
+});
+
 test('vai-e-vem do mindinho em dois eixos não forma gancho J', async () => {
   const r = await browserRuntime();
   const rig = recognitionRig(r);
@@ -383,6 +438,60 @@ for (const [letter, speed, step] of [
     assert.deepEqual(rig.signs.map(([value]) => value), [letter]);
   });
 }
+
+test('J intencional mantém confirmação com haste levemente inclinada e espelhada', async () => {
+  const r = await browserRuntime();
+  for (const mirror of [1, -1]) {
+    const rig = recognitionRig(r);
+    const path = J_PATH.map(([x, y], index) => [mirror * (x + Math.min(index, 5) * .02), y]);
+    rig.path('J', 100, 40, path);
+    assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+  }
+});
+
+test('fixtures sintéticas K, P e C preservam candidata e confirmação única', async () => {
+  const r = await browserRuntime();
+  const twoFingers = (down) => {
+    const wristY = down ? .2 : .8;
+    const mcpY = down ? .4 : .6;
+    const pipY = down ? .52 : .48;
+    const tipY = down ? .72 : .28;
+    const hand = Array.from({ length: 21 }, () => ({ x: .5, y: wristY, z: 0 }));
+    hand[0] = { x: .5, y: wristY, z: 0 };
+    for (const index of [5, 9, 13, 17]) hand[index] = { x: .5, y: mcpY, z: 0 };
+    hand[5] = { x: .42, y: mcpY, z: 0 };
+    hand[6] = { x: .38, y: pipY, z: 0 };
+    hand[8] = { x: .35, y: tipY, z: 0 };
+    hand[9] = { x: .58, y: mcpY, z: 0 };
+    hand[10] = { x: .62, y: pipY, z: 0 };
+    hand[12] = { x: .65, y: tipY, z: 0 };
+    hand[4] = { x: .5, y: pipY, z: 0 };
+    return hand;
+  };
+  const curved = () => {
+    // Protege a regra atual de C; não valida o sinal descrito no cadastro.
+    const hand = Array.from({ length: 21 }, () => ({ x: .5, y: .8, z: 0 }));
+    hand[0] = { x: .5, y: .9, z: 0 };
+    for (const [mcp, pip, tip, x] of [[5, 6, 8, .38], [9, 10, 12, .46],
+      [13, 14, 16, .54], [17, 18, 20, .62]]) {
+      hand[mcp] = { x, y: .62, z: 0 };
+      hand[pip] = { x, y: .42, z: 0 };
+      hand[tip] = { x: x + (mcp === 5 ? -.2 : .2), y: .42, z: 0 };
+    }
+    hand[4] = { x: .66, y: .42, z: 0 };
+    return hand;
+  };
+  for (const [letter, hand] of [['K', twoFingers(false)], ['P', twoFingers(true)], ['C', curved()]]) {
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    for (let at = 100; at <= 1000; at += 50) {
+      const state = engine.update({ landmarks: [hand] }, at, 20);
+      assert.equal(state.letter, letter);
+    }
+    assert.deepEqual(signs, [letter]);
+  }
+});
 
 for (const letter of ['J', 'Z']) {
   test(`trajetória ${letter} incompleta não produz sinal dinâmico`, async () => {
@@ -1564,6 +1673,57 @@ test('diagnóstico expõe o empate heurístico I/Y sem tratá-lo como probabilid
   assert.equal(sample.second, 'Y');
   assert.equal(sample.gap, 0);
   assert.equal(sample.candidateEligible, true);
+});
+
+test('O/A possuem escore saturado em uma fixture e O distingue outra configuração', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  new r.LibrasEngine().update({ landmarks: [pose('A')] }, 100, 20);
+  const tied = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal(tied.candidate, 'A');
+  assert.equal(tied.second, 'O');
+  assert.equal(tied.score, 1);
+  assert.equal(tied.secondScore, 1);
+  assert.equal(tied.gap, 0);
+
+  diag.clear();
+  const hand = pose('A');
+  hand[4] = { x: .5, y: .6, z: 0 };
+  hand[12] = { x: .5, y: .6, z: 0 };
+  new r.LibrasEngine().update({ landmarks: [hand] }, 200, 20);
+  const distinct = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal(distinct.candidate, 'O');
+  assert.equal(distinct.score, 1);
+  assert.ok(distinct.gap > 0);
+});
+
+test('Soletrar rejeita A empatado com O e aceita O após liberação', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const engine = new r.LibrasEngine();
+  new r.UI(engine, game, new r.ForcaGame());
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  r.cards[1].click();
+  game.target = 'OA';
+  game.wordIndex = 0;
+  const frame = (at, hand) => {
+    r.clock.now = at;
+    engine.update({ landmarks: hand ? [hand] : [] }, at, 20);
+  };
+  for (let at = 100; at <= 750; at += 50) frame(at, pose('A'));
+  assert.equal(game.wordIndex, 0);
+  for (let at = 800; at <= 1100; at += 50) frame(at, null);
+  const oHand = pose('A');
+  oHand[4] = { x: .5, y: .6, z: 0 };
+  oHand[12] = { x: .5, y: .6, z: 0 };
+  for (let at = 1150; at <= 2300; at += 50) frame(at, oHand);
+  assert.equal(game.wordIndex, 1);
+  const decisions = diag.read().events.filter((event) => event.type === 'game_decision');
+  assert.ok(decisions.some((event) => event.letter === 'A' && event.expected === 'O' && event.reason === 'wrong_letter'));
+  assert.ok(decisions.some((event) => event.letter === 'O' && event.expected === 'O' && event.reason === 'accepted'));
+  assert.equal(diag.read().events.filter((event) => event.type === 'signconfirmed').length, 2);
 });
 
 test('diagnóstico informa troca de candidata e rejeição de trajetória incoerente', async () => {

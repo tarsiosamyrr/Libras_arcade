@@ -1,6 +1,6 @@
 # Sistema implementado
 
-**Última inspeção:** 23/10/2026. **Referência:** FASE 03.2 no worktree `feat/fase-03-cooldown`, sem integração automática.
+**Última inspeção:** 24/10/2026. **Referência:** FASE 03.3B-1 no worktree `feat/fase-03-cooldown`, sem integração automática.
 
 ## Unidade executável e dependências
 
@@ -46,6 +46,8 @@ Durante `COOLDOWN`/`WAIT_RELEASE`, a classificação estática continua para det
 J/Z acumulam posições de ponta normalizadas pela escala da mão. Janela 1.300 ms, suavização de 3 pontos, ao menos 6 amostras. J usa curvatura/mudança angular; Z conta inversões horizontais. O comprimento acumulado da trajetória sozinho já não suspende D/I: a intenção requer deslocamento **líquido recente** de 0,06 em até 400 ms, após pelo menos 3 amostras. A suspensão tolera 300 ms sem continuação; depois o trajeto incompleto é descartado e o hold estático pode reiniciar. Amostras estacionárias anteriores ao movimento são substituídas dentro de raio 0,03, impedindo que deformem o desenho. Uma falha de landmarks de até 300 ms pode preservar a trajetória incompleta; falha maior, pausa e troca de sessão a limpam. Após confirmar J/Z, I/D é pose residual e não rearma a letra estática; outra trajetória da mesma pose requer 250 ms de ponta estável dentro de raio 0,04 ou uma liberação/rearmamento alternativo. Essas grandezas são hipóteses de software ainda não calibradas com sinais reais. O gesto de voltar acompanha o pulso numa janela de 700 ms, com cooldown independente de 1.200 ms. `resetHold()` ainda limpa só a sustentação estática; `resetTracking()` limpa todos os buffers de reconhecimento.
 
 Na FASE 03.1.2, priorizar movimento também requer avanço vertical recente de 0,04. Z exige três traços alternados com extensão horizontal mínima de 0,08 cada, avanço vertical de 0,04 no traço central, separação vertical total de 0,10, consistência vertical de 0,75 e duração mínima de 300 ms. J exige avanço vertical líquido de 0,10 e consistência de 0,65 além dos critérios de curva anteriores. Duas inversões sem progressão coerente rejeitam o caminho, deixam o hold de D/I prosseguir e bloqueiam nova trajetória da mesma pose até uma pausa da ponta por 250 ms dentro de raio 0,04 ou troca de pose-base. Os escores de I/Y não mudaram: Y compartilha os quatro componentes de I e acrescenta o polegar; uma candidata I visível num frame não garante 600 ms contínuos, nem prova que `signconfirmed` foi emitido. Os novos limiares são hipóteses sintéticas, não precisão medida. [Decisão detalhada](changes/2026-10-23-fase-0312-z-i-treino.md).
+
+Na FASE 03.3B-1, J também exige no trajeto suavizado um segmento de três passos descendentes consecutivos, cada um com deriva lateral no máximo 0,25 da descida. A busca percorre o buffer limitado existente; não exige que as primeiras amostras já sejam de movimento. Um intervalo sem callback superior à graça existente de 300 ms descarta a trajetória antes de processar uma pose-base retomada. Não mudaram o hold, o cooldown, a regra estática I/Y nem Z. Uma haste curta ou muito inclinada pode ser rejeitada; os limiares não foram validados com webcam. A e O podem pontuar ambos 1,00, e a ordem de `RULES` entrega A em empate; nenhuma regra O/A foi alterada. [Diagnóstico e decisão](changes/2026-10-24-fase-033b1-j-oa.md).
 
 | Emissor | Eventos e consumidores |
 | --- | --- |
