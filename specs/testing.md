@@ -2,6 +2,12 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
+## Verificação atual — FASE 03.3A, auditoria da calibração
+
+Em 24/10/2026, no commit-base `2f565a6` da branch `feat/fase-03-cooldown`, `npm.cmd test` passou com **123/123** antes e depois da edição documental. O validador de `maintaining-project-specs` concluiu com `[OK]`; `git diff --check` saiu sem erros; a matriz contém 26 linhas nominais. A [matriz de QA](../docs/qa-reconhecimento.md) foi derivada da inspeção de `libras.js`, `data.js`, `diagnostics.js`, visão, UI, motor do Soletrar e testes existentes. Nenhuma regra, timer, interface, fixture ou teste foi alterado. A suíte já inclui empate I/Y sintético, evento de confirmação até UI/jogo, razões de rejeição, letras iguais, timeout em cooldown, pausa, troca de modo e buffer diagnóstico; adicionar fixtures específicas I/O sem landmarks reais não isolaria o relato da webcam.
+
+As dez etapas do percurso de uma tentativa são observáveis nos eventos existentes, com limites: só duas candidatas estáticas, amostragem de 200 ms, anel de 120 eventos, sem identificador de tentativa ou validação anatômica dos landmarks. O protocolo exige isolamento manual de tentativas e separa observação qualitativa de taxas medidas. Não houve execução de webcam nem benchmark de CPU/RAM nesta fase; 123 testes verdes não são precisão por letra.
+
 ## Verificação atual — FASE 03.2, diagnóstico e Soletrar
 
 Em 23/10/2026, a linha de base local no commit `48fc74c` passou com **110/110** em `npm.cmd test`. Antes da implementação, três testes novos falharam: a última letra do Soletrar permanecia `is-current` após `wordcomplete`; `Game.handleSign()` não retornava razão técnica; a API de diagnóstico não existia. O primeiro caso era defeito funcional reproduzido. O segundo e terceiro eram lacunas de observabilidade, não falhas de pontuação.
