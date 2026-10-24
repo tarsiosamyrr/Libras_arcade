@@ -51,6 +51,7 @@
    ========================================================================== */
 
 import { LM, splitHandsByRole } from "./vision.js";
+import { diagnostics } from "./diagnostics.js";
 
 /* --------------------------------------------------------- CALIBRAÇÃO ---
    Se os sinais não forem bem reconhecidos na sua câmera/iluminação, ajuste
@@ -549,14 +550,25 @@ function isOpenHand(f) {
   return openness >= CONFIG.LEFT_HAND_OPEN_MIN;
 }
 
-function classify(features) {
+function classify(features, includeRunnerUp = false) {
   let best = null;
   let bestScore = 0;
+  let second = null;
+  let secondScore = 0;
   for (const letter of STATIC_LETTERS) {
     const score = RULES[letter](features);
-    if (score > bestScore) { bestScore = score; best = letter; }
+    if (score > bestScore) {
+      if (includeRunnerUp) { second = best; secondScore = bestScore; }
+      bestScore = score;
+      best = letter;
+    } else if (includeRunnerUp && score > secondScore) {
+      second = letter;
+      secondScore = score;
+    }
   }
-  return { letter: best, score: bestScore };
+  return includeRunnerUp
+    ? { letter: best, score: bestScore, second, secondScore }
+    : { letter: best, score: bestScore };
 }
 
 /* --------------------------------------------- GESTOS COM MOVIMENTO (J, Z) --- */
@@ -704,6 +716,7 @@ export class LibrasEngine extends EventTarget {
     this._motionRearmX = 0;
     this._motionRearmY = 0;
     this._motionRejectedKey = null;
+    this._motionProgress = 0;
     this._motionRejectStart = null;
     this._motionRejectX = 0;
     this._motionRejectY = 0;
@@ -757,6 +770,8 @@ export class LibrasEngine extends EventTarget {
         this._resetMotion();
       }
       this._advanceConfirmation(null, nowMs);
+      if (diagnostics.enabled) this._traceFrame(nowMs,
+        !!results?.diagnosticInvalidLandmarks, null, !results?.diagnosticInvalidLandmarks);
       this._emit();
       return this.state;
     }
@@ -765,7 +780,8 @@ export class LibrasEngine extends EventTarget {
     const rightLm = right.landmarks;
     const scale = handScale(rightLm);
     const features = extractFeatures(rightLm);
-    const { letter, score } = classify(features);
+    const ranking = classify(features, diagnostics.enabled);
+    const { letter, score } = ranking;
 
     this.state.features = features;
     this.state.letter = score >= CONFIG.MIN_SCORE ? letter : null;
@@ -789,6 +805,9 @@ export class LibrasEngine extends EventTarget {
         // Movimento em curso não equivale a liberação nem a troca estática.
         this._advanceConfirmation(this._confirmedLetter, nowMs);
       } else {
+        if (diagnostics.enabled && this._holdKey) diagnostics.record('hold_reset', {
+          candidate: this._holdKey, reason: 'motion_preparing'
+        }, nowMs);
         this._holdStart = null;
         this._holdKey = null;
         this.state.recognitionPhase = 'STABILIZING';
@@ -797,8 +816,39 @@ export class LibrasEngine extends EventTarget {
       this._advanceConfirmation(gateOpen ? this.state.letter : null, nowMs);
     }
 
+    if (diagnostics.enabled) this._traceFrame(nowMs, true, ranking);
     this._emit();
     return this.state;
+  }
+
+  /** Registra só decisões escalares; não retém features ou landmarks da mão. */
+  _traceFrame(nowMs, handPresent, ranking, landmarksValid = true) {
+    const phase = this.state.recognitionPhase;
+    const motionStatus = this._motionRejectedKey ? 'rejected' :
+      this._motionNeedsSettle ? 'residual' :
+        this._motionInProgress ? 'in_progress' : this._motionKey ? 'base' : 'none';
+    const reason = !landmarksValid ? 'invalid_landmarks' :
+      !handPresent ? 'no_hand' :
+      !this.state.leftGateOpen ? 'gate_closed' :
+        phase === 'COOLDOWN' ? 'cooldown' :
+          phase === 'WAIT_RELEASE' ? (motionStatus === 'residual' ? 'residual_base' : 'wait_release') :
+            phase === 'CONFIRMED' ? 'confirmed' :
+              motionStatus === 'rejected' ? 'motion_rejected' :
+                motionStatus === 'in_progress' ? 'motion_in_progress' :
+                  (ranking?.score ?? 0) < CONFIG.MIN_SCORE ? 'below_threshold' :
+                    phase === 'STABILIZING' ? 'stabilizing' : 'ready';
+    diagnostics.observe({
+      handPresent, landmarksValid, candidate: ranking?.letter ?? null,
+      candidateEligible: (ranking?.score ?? 0) >= CONFIG.MIN_SCORE,
+      score: ranking?.score ?? 0, second: ranking?.second ?? null,
+      secondScore: ranking?.secondScore ?? 0,
+      gap: (ranking?.score ?? 0) - (ranking?.secondScore ?? 0),
+      phase, stabilizingMs: this._holdStart === null ? 0 : Math.max(0, nowMs - this._holdStart),
+      cooldownRemainingMs: this._confirmedAt === null ? 0 :
+        Math.max(0, CONFIG.CONFIRM_COOLDOWN_MS - (nowMs - this._confirmedAt)),
+      motionLetter: this._motionKey, motionSamples: this._motionBuffer.length,
+      motionProgress: this._motionProgress, motionStatus, reason
+    }, nowMs);
   }
 
   /** Zera somente a sustentação estática; trajetórias e navegação têm buffers próprios. */
@@ -828,6 +878,7 @@ export class LibrasEngine extends EventTarget {
     this.state.leftHand = { present: false, open: false };
     this.state.rightHand = { present: false };
     this.state.leftGateOpen = false;
+    if (diagnostics.enabled) diagnostics.record('tracking_reset', { reason: 'session_or_pause' });
     this._emit();
   }
 
@@ -894,6 +945,9 @@ export class LibrasEngine extends EventTarget {
     this._motionNeedsSettle = letter === 'J' || letter === 'Z';
     this._motionRearmStart = null;
     this.state.recognitionPhase = 'CONFIRMED';
+    if (diagnostics.enabled) diagnostics.record('signconfirmed', {
+      letter, phase: 'CONFIRMED', reason: 'emitted'
+    }, nowMs);
     this.dispatchEvent(new CustomEvent('signconfirmed', { detail: { letter } }));
   }
 
@@ -903,11 +957,17 @@ export class LibrasEngine extends EventTarget {
         this.state.holdProgress = this._progressFor(nowMs);
         return;
       }
+      if (diagnostics.enabled && this._holdKey) diagnostics.record('hold_reset', {
+        candidate: this._holdKey, reason: 'candidate_lost'
+      }, nowMs);
       this.resetHold();
       return;
     }
 
     if (letter !== this._holdKey) {
+      if (diagnostics.enabled && this._holdKey) diagnostics.record('hold_reset', {
+        candidate: this._holdKey, second: letter, reason: 'candidate_changed'
+      }, nowMs);
       this._holdKey = letter;
       this._holdStart = nowMs;
     }
@@ -1026,6 +1086,10 @@ export class LibrasEngine extends EventTarget {
     this._motionInProgress = this._motionLastIntentAt !== null &&
       nowMs - this._motionLastIntentAt <= CONFIG.MOTION_INTENT_GRACE_MS;
     if (this._motionLastIntentAt !== null && !this._motionInProgress) {
+      if (diagnostics.enabled) diagnostics.record('motion_rejected', {
+        motionLetter: key, motionSamples: this._motionBuffer.length,
+        reason: 'incomplete_trajectory'
+      }, nowMs);
       this._resetMotion();
       return null;
     }
@@ -1036,6 +1100,10 @@ export class LibrasEngine extends EventTarget {
         horizontalDirectionFlips(smoothed, CONFIG.MOTION_MIN_SPAN * CONFIG.Z_MIN_STEP_RATIO) >= CONFIG.Z_DIRECTION_FLIPS_ON &&
         Math.abs(last.y - smoothed[0].y) < CONFIG.J_MIN_VERTICAL_NET &&
         verticalDirectionConsistency(smoothed) < CONFIG.J_MIN_VERTICAL_CONSISTENCY) {
+      if (diagnostics.enabled) diagnostics.record('motion_rejected', {
+        motionLetter: key, motionSamples: this._motionBuffer.length,
+        reason: 'incoherent_trajectory'
+      }, nowMs);
       this._resetMotion();
       this._motionRejectedKey = key;
       this._motionRejectStart = nowMs;
@@ -1045,6 +1113,7 @@ export class LibrasEngine extends EventTarget {
     }
 
     const spanProgress = Math.min(0.95, traveled / CONFIG.MOTION_MIN_SPAN);
+    if (diagnostics.enabled) this._motionProgress = spanProgress;
     const canShowProgress = this.state.recognitionPhase === 'READY' ||
       this.state.recognitionPhase === 'STABILIZING';
     if (canShowProgress && this._motionInProgress && spanProgress > (this.state.holdProgress || 0)) {
@@ -1084,6 +1153,7 @@ export class LibrasEngine extends EventTarget {
     this._motionInProgress = false;
     this._motionLastIntentAt = null;
     this._motionRejectedKey = null;
+    this._motionProgress = 0;
     this._motionRejectStart = null;
   }
 

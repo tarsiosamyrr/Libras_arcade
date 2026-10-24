@@ -8,6 +8,15 @@ import { LibrasEngine } from "./libras.js";
 import { Game } from "./game.js";
 import { ForcaGame } from "./forca.js";
 import { UI } from "./ui.js";
+import { diagnostics } from "./diagnostics.js";
+
+/** API local para diagnóstico voluntário no console; dados não são persistidos. */
+window.librasArcadeDiagnostics = Object.freeze({
+  enable: () => diagnostics.enable(),
+  disable: () => diagnostics.disable(),
+  clear: () => diagnostics.clear(),
+  read: () => diagnostics.read()
+});
 
 const bootGate = document.getElementById('boot-gate');
 const bootCore = document.getElementById('boot-core');
@@ -87,6 +96,19 @@ function drawHands(results) {
   }
 }
 
+/** Confere a estrutura dos 21 pontos somente durante diagnóstico ativo. */
+function validLandmarks(results) {
+  const hands = results?.landmarks;
+  if (!Array.isArray(hands)) return false;
+  for (const hand of hands) {
+    if (!Array.isArray(hand) || hand.length !== 21) return false;
+    for (const point of hand) {
+      if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false;
+    }
+  }
+  return true;
+}
+
 function dist(a, b) { 
   return Math.hypot(a.x - b.x, a.y - b.y, (a.z || 0) - (b.z || 0)); 
 }
@@ -141,6 +163,7 @@ function cameraErrorMessage(error) {
 
 /** Congela processamento e rodada antes de liberar a câmera da aba. */
 function suspend() {
+  if (diagnostics.enabled) diagnostics.record('app_pause', { reason: 'camera_suspended' });
   detachCameraTrack();
   stopCamera(video);
   if (overlayHasHands) ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -196,11 +219,19 @@ async function boot() {
     }
     runtime.game.resume();
     runtime.forca.resume();
+    if (diagnostics.enabled) diagnostics.record('app_resume', { reason: 'camera_resumed' });
     // O cursor usa chamada direta; LibrasEngine continua emitindo eventos por frame.
     startDetectionLoop(video, (results, fps) => {
-      drawHands(results);
-      runtime.libras.update(results, performance.now(), fps);
-      runtime.ui._onCursorFrame(computeNavState(results));
+      const valid = !diagnostics.enabled || validLandmarks(results);
+      const safeResults = valid ? results : { landmarks: [], diagnosticInvalidLandmarks: true };
+      drawHands(safeResults);
+      const now = performance.now();
+      if (!valid) diagnostics.record('input_invalid', {
+        handPresent: !!results?.landmarks?.length,
+        landmarksValid: false, reason: 'invalid_landmarks'
+      }, now);
+      runtime.libras.update(safeResults, now, fps);
+      runtime.ui._onCursorFrame(computeNavState(safeResults));
     }, showError);
   })();
   bootPromise = pending;

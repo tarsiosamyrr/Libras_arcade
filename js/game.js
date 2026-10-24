@@ -198,9 +198,15 @@ export class Game extends EventTarget {
   }
 
   /* --------------------------------------------------- entrada do jogo --- */
-  /** Chamado pela UI quando o LibrasEngine confirma uma letra sinalizada. */
+  /** Recebe uma letra confirmada e retorna a decisão técnica para diagnóstico.
+   * Códigos de rejeição não mudam a pontuação nem os eventos existentes.
+   * @param {string} letter Letra nominal emitida por signconfirmed.
+   * @returns {'accepted'|'wrong_letter'|'no_session'|'paused'|'round_transition'} Decisão do motor.
+   */
   handleSign(letter) {
-    if (!this.mode || this._paused || !this._timerId) return;
+    if (!this.mode) return 'no_session';
+    if (this._paused) return 'paused';
+    if (!this._timerId) return 'round_transition';
 
     const expected = this.mode === 'practice'
       ? this.target
@@ -208,8 +214,10 @@ export class Game extends EventTarget {
 
     if (letter === expected) {
       this._onCorrectLetter();
+      return 'accepted';
     } else {
       this._onWrongLetter(letter, expected);
+      return 'wrong_letter';
     }
   }
 

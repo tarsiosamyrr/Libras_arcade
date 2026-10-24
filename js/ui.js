@@ -8,6 +8,7 @@
 
 import { LETTERS, LETTER_POOL } from "./data.js";
 import { MOTION_LETTERS } from "./libras.js";
+import { diagnostics } from "./diagnostics.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -75,6 +76,7 @@ export class UI {
     this.hoveredId = null;
     this.diagOpen = false;
     this.currentScreen = 'home';
+    diagnostics.setContext(null, 'home');
     this._exitingManually = false;
     this.pendingLevels = { practice: 1, word: 1, forca: 1 };
     this.practiceLevelDots = [...document.querySelectorAll('.mode-card')]
@@ -88,6 +90,7 @@ export class UI {
     this._cacheLetter = null;
     this._cacheStatusKey = null;
     this._cacheRecognitionPhase = null;
+    this._lastDiagRenderAt = -Infinity;
 
     this._buildReference();
     this._bindLibrasEvents();
@@ -102,8 +105,34 @@ export class UI {
   _bindLibrasEvents() {
     this.libras.addEventListener('frame', (e) => this._onLibrasFrame(e.detail));
     this.libras.addEventListener('signconfirmed', (e) => {
-      if (this.currentScreen === 'play') this.game.handleSign(e.detail.letter);
-      else if (this.currentScreen === 'forca-play') this.forca.handleGuess(e.detail.letter);
+      const letter = e.detail.letter;
+      if (diagnostics.enabled) diagnostics.record('ui_received', {
+        letter, screen: this.currentScreen, mode: this.game.mode ||
+          (this.currentScreen === 'forca-play' ? 'forca' : null)
+      });
+      if (this.currentScreen === 'play') {
+        const expected = this.game.mode === 'word'
+          ? this.game.target?.[this.game.wordIndex] : this.game.target;
+        const mode = this.game.mode;
+        const wordIndex = this.game.wordIndex;
+        const round = this.game.round;
+        const timeLeft = this.game.timeLeft;
+        const reason = this.game.handleSign(letter);
+        if (diagnostics.enabled) diagnostics.record('game_decision', {
+          letter, expected, mode, screen: this.currentScreen, wordIndex, round,
+          accepted: reason === 'accepted', reason, timeLeft
+        });
+      } else if (this.currentScreen === 'forca-play') {
+        const reason = this.forca.handleGuess(letter);
+        if (diagnostics.enabled) diagnostics.record('game_decision', {
+          letter, mode: 'forca', screen: this.currentScreen,
+          accepted: reason === 'accepted', reason, round: this.forca.round
+        });
+      } else if (diagnostics.enabled) {
+        diagnostics.record('game_decision', {
+          letter, screen: this.currentScreen, accepted: false, reason: 'inactive_screen'
+        });
+      }
     });
     // gesto de voltar (deslizar a mão da esquerda pra direita) — funciona
     // nas telas internas do projeto, igual pedido: fecha o guia se estiver
@@ -171,19 +200,7 @@ export class UI {
       }
     }
 
-    if (this.diagOpen && this.diagJson) {
-      this.diagJson.textContent = JSON.stringify({
-        maos: state.hands,
-        letraDetectada: state.letter,
-        confianca: Number(state.score || 0).toFixed(2),
-        segurando: state.holdLetter,
-        progresso: Number(state.holdProgress || 0).toFixed(2),
-        fps: state.fps,
-        features: state.features
-          ? Object.fromEntries(Object.entries(state.features).map(([k, v]) => [k, Number(v).toFixed(2)]))
-          : null
-      }, null, 2);
-    }
+    this._renderDiagnostics();
 
     this._renderHandsStatus(state);
   }
@@ -250,6 +267,11 @@ export class UI {
       this._renderTarget(e.detail);
       this._renderHud(e.detail);
       this._renderTimer(1);
+      if (diagnostics.enabled) diagnostics.record('round_start', {
+        mode: e.detail.mode, screen: this.currentScreen, round: e.detail.round,
+        expected: e.detail.mode === 'word' ? e.detail.target[e.detail.wordIndex] : e.detail.target,
+        wordIndex: e.detail.wordIndex, timeLeft: e.detail.timeLeft
+      });
     });
     this.game.addEventListener('correct', (e) => {
       if (e.detail.mode === 'word') this._renderTarget(e.detail);
@@ -257,10 +279,18 @@ export class UI {
       this._toast('ACERTOU! +' + e.detail.gained, 'correct');
       this._renderHud(e.detail);
     });
-    this.game.addEventListener('wordcomplete', (e) => { this._flashCard('is-correct'); this._toast('PALAVRA COMPLETA! +' + e.detail.bonus, 'correct'); this._renderHud(e.detail); });
+    this.game.addEventListener('wordcomplete', (e) => { this._renderTarget(e.detail); this._flashCard('is-correct'); this._toast('PALAVRA COMPLETA! +' + e.detail.bonus, 'correct'); this._renderHud(e.detail); });
     this.game.addEventListener('levelup', (e) => { this._toast('SUBIU DE NÍVEL! NÍVEL ' + e.detail.level, 'correct'); this._renderHud(e.detail); });
     this.game.addEventListener('wrong', (e) => { this._flashCard('is-wrong'); this._toast('TENTE NOVAMENTE', 'wrong'); this._renderHud(e.detail); });
-    this.game.addEventListener('timeout', (e) => { this._flashCard('is-wrong'); this._toast('TEMPO ESGOTADO', 'wrong'); this._renderHud(e.detail); });
+    this.game.addEventListener('timeout', (e) => {
+      if (diagnostics.enabled) diagnostics.record('game_timeout', {
+        mode: e.detail.mode, screen: this.currentScreen, round: e.detail.round,
+        expected: e.detail.mode === 'word' ? e.detail.target[e.detail.wordIndex] : e.detail.target,
+        wordIndex: e.detail.wordIndex, phase: this.libras.state.recognitionPhase,
+        reason: 'timer_expired'
+      });
+      this._flashCard('is-wrong'); this._toast('TEMPO ESGOTADO', 'wrong'); this._renderHud(e.detail);
+    });
     this.game.addEventListener('tick', (e) => this._renderTimer(e.detail.ratio));
     this.game.addEventListener('sessionend', (e) => { if (!this._exitingManually) this._openResults(e.detail, 'game'); });
   }
@@ -386,10 +416,16 @@ export class UI {
           return `<span class="wletter ${cls}">${ch}</span>`;
         }).join('');
       }
-      const current = detail.target[detail.wordIndex];
+      // Na última confirmação, wordIndex já vale o comprimento da palavra.
+      // O último caractere fica concluído durante os 450 ms de avanço.
+      const current = detail.target[Math.min(detail.wordIndex, detail.target.length - 1)];
       this._renderSchematic(current);
       if (this.targetTip) this.targetTip.textContent = LETTERS[current]?.tip || '';
     }
+    if (diagnostics.enabled && detail.mode === 'word') diagnostics.record('ui_target', {
+      screen: this.currentScreen, mode: 'word', expected: detail.target[detail.wordIndex] ?? null,
+      wordIndex: detail.wordIndex, round: detail.round, uiUpdated: true
+    });
   }
 
   /** Atualiza as opções somente quando muda o conjunto ou o nível pedagógico. */
@@ -476,6 +512,10 @@ export class UI {
   _showScreen(name) {
     const changed = this.currentScreen !== name;
     this.currentScreen = name;
+    diagnostics.setContext(this.game.mode || (name === 'forca-play' ? 'forca' : null), name);
+    if (changed && diagnostics.enabled) diagnostics.record('screen_change', {
+      screen: name, mode: this.game.mode || (name === 'forca-play' ? 'forca' : null)
+    });
     if (changed) {
       // Um sinal iniciado no menu ou em outro modo não pode confirmar na nova tela.
       this.libras.resetTracking();
@@ -605,9 +645,22 @@ export class UI {
     if (this.referenceEl) this.referenceEl.classList.toggle('is-open', open);
   }
 
+  /** Alterna a captura voluntária e o painel, apagando eventos ao fechar. */
   toggleDiag() {
     this.diagOpen = !this.diagOpen;
+    if (this.diagOpen) diagnostics.enable();
+    else diagnostics.disable();
     if (this.diagEl) this.diagEl.classList.toggle('is-open', this.diagOpen);
+    this._renderDiagnostics(true);
+  }
+
+  /** Atualiza o painel no máximo a cada 200 ms; não cria loop nem serializa por frame. */
+  _renderDiagnostics(force = false) {
+    if (!this.diagOpen || !this.diagJson) return;
+    const now = performance.now();
+    if (!force && now - this._lastDiagRenderAt < 200) return;
+    this._lastDiagRenderAt = now;
+    this.diagJson.textContent = JSON.stringify(diagnostics.read().events.slice(-8), null, 2);
   }
 
   /* ================================================ fallback mouse/toque */

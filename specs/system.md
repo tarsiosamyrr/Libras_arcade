@@ -1,10 +1,10 @@
 # Sistema implementado
 
-**Última inspeção:** 23/10/2026. **Referência:** FASE 03.1.3 no worktree `feat/fase-03-cooldown`, sem integração automática.
+**Última inspeção:** 23/10/2026. **Referência:** FASE 03.2 no worktree `feat/fase-03-cooldown`, sem integração automática.
 
 ## Unidade executável e dependências
 
-Aplicação estática iniciada por `index.html` → `js/app.js`. Sete módulos ES, um CSS e HTML, sem pacote/build/servidor de aplicação. O browser carrega `@mediapipe/tasks-vision@0.10.14` de jsDelivr, runtime WASM e modelo `hand_landmarker/float16/1` do Google Storage. Fontes Rajdhani e Share Tech Mono vêm de Google Fonts. Não há código Python nem TypeScript versionado.
+Aplicação estática iniciada por `index.html` → `js/app.js`. Oito módulos ES, um CSS e HTML, sem pacote/build/servidor de aplicação. O browser carrega `@mediapipe/tasks-vision@0.10.14` de jsDelivr, runtime WASM e modelo `hand_landmarker/float16/1` do Google Storage. Fontes Rajdhani e Share Tech Mono vêm de Google Fonts. Não há código Python nem TypeScript versionado.
 
 ```mermaid
 flowchart LR
@@ -55,6 +55,16 @@ Na FASE 03.1.2, priorizar movimento também requer avanço vertical recente de 0
 
 `signconfirmed` só é encaminhado ao jogo quando `currentScreen` é `play` ou `forca-play`. Abertura de guia não muda esse campo. O app entrega o cursor por chamada direta; o listener legado `libras-cursor` foi removido. UI também usa `_snapshot()` dos jogos.
 
+### Instrumentação da FASE 03.2
+
+`diagnostics.js` possui uma instância local inicialmente desligada. `app.js` expõe apenas `enable()`, `disable()`, `clear()` e `read()` em `window.librasArcadeDiagnostics`. Não cria timers nem listeners. Quando ativa, verifica comprimento de 21 landmarks e coordenadas `x/y` finitas antes do desenho; um resultado inválido produz `input_invalid` e um frame seguro sem mão. Não registra nem envia os pontos, imagens, vídeo ou o objeto de features. A lista permitida de campos aceita somente escalares; a leitura devolve cópias.
+
+O registro circular mantém no máximo **120 eventos**; uma observação `recognition` entra a cada **200 ms** ou mudança de candidata, fase ou razão. A classificação calcula o segundo melhor escore somente com captura ligada. A UI serializa os oito eventos mais recentes no painel a cada 200 ms quando ele está aberto. `mode`/`screen` vêm da navegação, sem consulta DOM por frame. `disable()` apaga os eventos. CPU/RAM reais não foram medidos; com diagnóstico desligado, não há validação estrutural extra, cálculo da segunda candidata nem serialização do painel.
+
+`recognition` descreve presença/validade da mão, primeira e segunda candidatas estáticas, elegibilidade pelo limiar, escores e diferença (`gap`), `phase`, `stabilizingMs`, `cooldownRemainingMs`, `motionLetter`, amostras, progresso e `motionStatus`. `hold_reset` identifica troca/perda da candidata ou suspensão por movimento; `motion_rejected` identifica trajetória incompleta ou incoerente. `signconfirmed` é registrado imediatamente antes da emissão síncrona do evento. A UI registra `ui_received`, depois `game_decision` com `expected`, índice, rodada e razão devolvida pelo motor; `ui_target` comprova passagem pelo renderizador. `round_start`, `game_timeout`, `screen_change`, `tracking_reset`, `app_pause` e `app_resume` ajudam a localizar trocas de sessão. O escore não é probabilidade; `gap = 0` mostra empate, sem impor limiar de margem. `below_threshold` refere-se a `MIN_SCORE = 0,55`, enquanto `cooldown`, `wait_release`, `residual_base` e `motion_in_progress` explicam bloqueios temporais. Nenhuma confirmação é reenviada pelo diagnóstico.
+
+`Game.handleSign()` mantém os mesmos eventos e agora devolve `accepted`, `wrong_letter`, `no_session`, `paused` ou `round_transition`; este último ocorre no atraso de 450 ms após palavra completa ou timeout. `ForcaGame.handleGuess()` devolve também `repeated_letter`. A UI rejeita `signconfirmed` fora das telas de jogo com `inactive_screen`. No Soletrar, `wordcomplete` passou a chamar `_renderTarget()` para marcar a última letra concluída antes da próxima palavra; o caractere final continua sendo a referência esquemática durante o atraso. O cronômetro por letra segue ativo durante cooldown, sem mudança de duração.
+
 ## Estado, pontuação e transições
 
 `Game.mode` é `null`, `practice` ou `word`. Nos níveis tradicionais, Treino usa fila embaralhada filtrada pela dificuldade; Soletrar escolhe o banco do nível. O conjunto especial `practiceSet = 'all'` usa `LETTER_POOL` ordenado de A a Z, inclui J/Z, mantém tempo de nível 1 e não sobe de nível. Cada acerto dá `round(10 × (1 + min(4, floor(streak/3)) × 0.25))`; palavra completa acrescenta `20 + 5 × tamanho`. Nos modos tradicionais, a cada 5 letras corretas sobe o nível até 5 e esvazia a fila.
@@ -75,7 +85,7 @@ Não há término automático da sessão por número de rodadas. A saída manual
 - Modelo: referência de módulo compartilhada entre tentativas e fechada em `pagehide`; carregamento tardio após descarte é invalidado. rAF: uma cadeia em `vision.js`, parada ao ocultar a aba ou diante de erro; callbacks antigos não a rearmam.
 - Telemetria: quatro `Float64Array(120)` para timestamps e tempos, 3.840 bytes de armazenamento numérico fixo. FPS usa janela de 1 s; durações usam até 120 amostras, inclusive enquanto parado. Contadores acumulam desde o último início. Históricos de movimento/navegação mantêm suas janelas; não são datasets persistidos.
 - Timers: intervalo de Treino/Soletrar e avanços dos três modos são guardados, pausados e cancelados no encerramento; toast cancela timeout anterior.
-- UI: uma instância registra listeners persistentes durante a página; sem `dispose()`. Há caches parciais de valores, com atualizações/serialização remanescentes por frame.
+- UI: uma instância registra listeners persistentes durante a página; sem `dispose()`. Há caches parciais de valores. O painel de diagnóstico só serializa quando aberto e limitado a cada 200 ms; outras atualizações visuais ainda podem ocorrer por frame ou tick.
 
 ## Lacunas
 

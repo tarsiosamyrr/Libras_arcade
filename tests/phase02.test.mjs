@@ -10,6 +10,7 @@ const dataSource = (await readFile(new URL('../js/data.js', import.meta.url), 'u
   .replace('import { SUPPORTED_LETTERS } from "./libras.js";',
     "const SUPPORTED_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');");
 const dataUrl = asModule(dataSource);
+const diagnosticsUrl = asModule(await readFile(new URL('../js/diagnostics.js', import.meta.url), 'utf8'));
 const gameSource = (await readFile(new URL('../js/game.js', import.meta.url), 'utf8'))
   .replace('from "./data.js"', `from "${dataUrl}"`);
 const forcaSource = (await readFile(new URL('../js/forca.js', import.meta.url), 'utf8'))
@@ -18,9 +19,11 @@ const { Game } = await import(asModule(gameSource));
 const { ForcaGame } = await import(asModule(forcaSource));
 const uiSource = (await readFile(new URL('../js/ui.js', import.meta.url), 'utf8'))
   .replace('from "./data.js"', `from "${dataUrl}"`)
+  .replace('from "./diagnostics.js"', `from "${diagnosticsUrl}"`)
   .replace('import { MOTION_LETTERS } from "./libras.js";', 'const MOTION_LETTERS = [];');
 const { UI } = await import(asModule(uiSource));
 const librasSource = (await readFile(new URL('../js/libras.js', import.meta.url), 'utf8'))
+  .replace('from "./diagnostics.js"', `from "${diagnosticsUrl}"`)
   .replace('import { LM, splitHandsByRole } from "./vision.js";',
     'const LM = {}; const splitHandsByRole = () => ({ left: null, right: null });');
 const { LibrasEngine } = await import(asModule(librasSource));

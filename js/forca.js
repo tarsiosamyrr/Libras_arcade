@@ -84,20 +84,26 @@ export class ForcaGame extends EventTarget {
     this.dispatchEvent(new CustomEvent('newword', { detail: this._snapshot() }));
   }
 
-  /** Chamado pela UI quando o LibrasEngine confirma uma letra sinalizada. */
+  /** Recebe um palpite e retorna a decisão técnica para diagnóstico.
+   * @param {string} letter Letra nominal emitida por signconfirmed.
+   * @returns {'accepted'|'wrong_letter'|'repeated_letter'|'paused'|'round_transition'} Decisão da Forca.
+   */
   handleGuess(letter) {
-    if (this.status !== 'playing' || this._paused) return;
+    if (this._paused) return 'paused';
+    if (this.status !== 'playing') return 'round_transition';
 
     if (this.guessed.has(letter)) {
       this.dispatchEvent(new CustomEvent('repeated', { detail: { ...this._snapshot(), letter } }));
-      return;
+      return 'repeated_letter';
     }
     this.guessed.add(letter);
 
     if (this.word.includes(letter)) {
       this._onHit(letter);
+      return 'accepted';
     } else {
       this._onMiss(letter);
+      return 'wrong_letter';
     }
   }
 

@@ -2,6 +2,14 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
+## Verificação atual — FASE 03.2, diagnóstico e Soletrar
+
+Em 23/10/2026, a linha de base local no commit `48fc74c` passou com **110/110** em `npm.cmd test`. Antes da implementação, três testes novos falharam: a última letra do Soletrar permanecia `is-current` após `wordcomplete`; `Game.handleSign()` não retornava razão técnica; a API de diagnóstico não existia. O primeiro caso era defeito funcional reproduzido. O segundo e terceiro eram lacunas de observabilidade, não falhas de pontuação.
+
+Após a alteração, `npm.cmd test` passou com **123/123** (treze casos novos), `npm.cmd run test:camera` com **110/110** e `npm.cmd run test:performance` com **13/13**. O loader de `tests/phase02.test.mjs` passou a carregar o novo módulo local como data URL; sem isso, o harness legado falhava em resolver um import relativo dentro de sua própria data URL. Isso não era uma falha do navegador nem do jogo.
+
+Os casos novos exercitam a marcação da última letra, decisão de aceitação/erro/pausa/transição/sessão encerrada, emissão até UI e jogo, letras iguais com liberação, timeout durante cooldown, troca de modo, troca rápida de banco e cancelamento de avanço, J em movimento, pausa/retomada, landmarks estruturalmente inválidos, limite de 120 registros, cópias de leitura, ausência de landmarks no registro, amostragem do painel, empate heurístico I/Y, descarte de hold/trajetória e listeners/loop únicos. O relógio e os landmarks são sintéticos; a execução não valida precisão, orientação, lateralidade ou experiência com webcam real. O diagnóstico foi verificado por comportamento e inspeção de caminhos condicionais, sem benchmark comparável de CPU/RAM com captura ativa. A validação visual do painel em navegador físico permanece pendente.
+
 ## Verificação atual — FASE 03.1.3, interface do Treino
 
 Em 23/10/2026, a linha de base local passou com **107/107** em `npm.cmd test`. Antes da correção, novos testes falharam porque `Anterior` e `Escolher letra` eram ocultados nos níveis e `Game.navigatePracticeTarget()` rejeitava `-1` e letras fora de A–Z; a opção completa também não tinha `aria-pressed`. Após a alteração, `npm.cmd test` passou com **110/110** (três testes novos; alguns testes existentes foram ampliados), `npm.cmd run test:camera` com **97/97**, `npm.cmd run test:performance` com **13/13**, e a sintaxe dos módulos e `git diff --check` passaram. O harness agora exige que os IDs simulados constem do `index.html`, evitando falso verde caso um controle seja removido do markup. Verifica seleção semântica, níveis 1–3, filtros de letras, navegação, cancelamento de avanço, relógio, pontos, listeners e ocultação fora do Treino. A fixture continua sendo um DOM simulado, sem cálculo de layout.

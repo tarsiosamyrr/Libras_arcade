@@ -2,7 +2,7 @@
 
 Jogo educacional de datilologia em Libras, desenvolvido no contexto de uma Liga de Inteligência Artificial. A webcam fornece landmarks da mão para um classificador geométrico executado no navegador, que alimenta os modos **Treino, Soletrar e Forca**.
 
-Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02, as correções de armazenamento e estatísticas da FASE 02.1, o cooldown da FASE 03, a arbitragem estática/dinâmica da FASE 03.1 e as correções da FASE 03.1.2. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
+Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02, as correções de armazenamento e estatísticas da FASE 02.1, o cooldown da FASE 03, a arbitragem estática/dinâmica da FASE 03.1, a navegação do Treino da FASE 03.1.3 e o diagnóstico da FASE 03.2. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
 
 Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arcade).
 
@@ -49,7 +49,7 @@ Alternativas existentes de desenvolvimento: Live Server do VS Code ou `npx serve
 | Abrir guia | Botões “Guia do alfabeto” ou “Aprender Libras”. |
 | Sair da rodada | Botão Sair, `Esc`, pinça sobre Sair ou deslize da mão da esquerda para a direita na imagem espelhada. |
 | Fechar guia | Clique em Fechar, `Esc`, deslize ou punho fechado fora das telas de jogo. |
-| Abrir diagnóstico | Tecla `d`; o painel fica oculto pelo CSS em telas de até 720 px. |
+| Abrir diagnóstico | Tecla `d` ativa a captura local e abre o painel; a mesma tecla desativa e apaga a captura. O painel fica oculto pelo CSS em telas de até 720 px; use a API do console no celular. |
 
 Mouse/toque são alternativas de **navegação**; as respostas dos jogos continuam dependendo do reconhecimento. O teclado desenhado na Forca é um indicador de palpites, sem entrada por clique. O Treino tem botões nativos para escolher conjunto, nível e alvo por teclado. O suporte geral de navegação por teclado ainda está incompleto: os cartões recebem foco, mas não tratam Enter/Espaço.
 
@@ -85,6 +85,7 @@ As 90 palavras cadastradas têm dicas e usam letras da cobertura nominal. A difi
 │   ├── vision.js           # MediaPipe, câmera, loop e landmarks
 │   ├── libras.js           # Regras estáticas, trajetórias, hold e navback
 │   ├── data.js             # Letras, dificuldades, 90 palavras e dicas
+│   ├── diagnostics.js      # Captura local opcional e buffer circular limitado
 │   ├── game.js             # Treino/Soletrar, pontos, sequência e tempo
 │   ├── forca.js            # Palpites, erros e vitórias da Forca
 │   └── ui.js               # DOM, eventos, telas, cursor e interações
@@ -126,7 +127,23 @@ O snapshot retorna FPS, callbacks, inferências e callbacks ignorados por frame 
 
 Há comparação com MediaPipe real, vídeo controlado sem mãos e os três modos em Edge/Windows. Protocolo, números, arquivos brutos e avaliação de Worker/rVFC estão no [relatório da FASE 01](docs/performance/FASE01.md). O ganho comprovado é a remoção de trabalho redundante do Canvas; variação de tempo do modelo não é atribuída à alteração. Não há medição de CPU/RAM total nem homologação de precisão por webcam.
 
-`detectForVideo()` continua síncrono na thread principal. As FASES 03.1/03.1.2 observam e avaliam trajetórias também durante cooldown para permitir D→Z/I→J e rejeitar oscilações; não há timers por frame nem alteração da frequência de inferência, mas esse caminho faz trabalho adicional quando há pose-base J/Z. Permanecem alocações de eventos, objetos e arrays; o diagnóstico aberto serializa JSON a cada frame. CPU/RAM após a mudança não foram medidos. Worker e `requestVideoFrameCallback` não foram adotados, conforme justificativas e limites registrados no relatório.
+`detectForVideo()` continua síncrono na thread principal. As FASES 03.1/03.1.2 observam e avaliam trajetórias também durante cooldown para permitir D→Z/I→J e rejeitar oscilações; não há timers por frame nem alteração da frequência de inferência, mas esse caminho faz trabalho adicional quando há pose-base J/Z. Permanecem alocações de eventos, objetos e arrays. Na FASE 03.2, o diagnóstico fica desligado por padrão; ligado, calcula a segunda candidata e a validade estrutural dos landmarks, amostra decisões a cada 200 ms ou mudança de estado e só serializa os oito eventos finais para o painel a cada 200 ms. CPU/RAM e custo comparativo em webcam real não foram medidos. Worker e `requestVideoFrameCallback` não foram adotados, conforme justificativas e limites registrados no relatório.
+
+### Diagnóstico voluntário no navegador
+
+No console, após carregar a página:
+
+```javascript
+window.librasArcadeDiagnostics.enable();
+window.librasArcadeDiagnostics.read();
+window.librasArcadeDiagnostics.disable(); // desliga e apaga o buffer
+```
+
+`clear()` apaga o buffer mantendo a captura ativa. O painel da tecla `d` apresenta os oito eventos mais recentes; a API devolve até 120 eventos em ordem cronológica, somente na memória da aba. Não há gravação, envio ou exportação automática. Desative a captura antes de compartilhar a tela ou qualquer resultado.
+
+`recognition` contém `handPresent`, `landmarksValid` (21 pontos com `x/y` finitos), `candidate`/`second` (primeira e segunda regras estáticas), `candidateEligible` (passou de `MIN_SCORE`), `score`/`secondScore`, `gap`, `phase`, `stabilizingMs`, `cooldownRemainingMs`, `motionLetter`, `motionSamples`, `motionProgress`, `motionStatus` e `reason`. Escores são médias heurísticas, **não probabilidades**. `signconfirmed` registra emissão; `ui_received`, chegada à UI; `game_decision`, aceitação ou rejeição; `ui_target`, atualização do alvo; `round_start` e `game_timeout`, ciclo da rodada. `mode` e `screen` indicam o contexto. Ausência de `signconfirmed` após uma candidata visível indica perda antes do evento, geralmente limiar, instabilidade, trajetória ou fase temporal; um `game_decision` rejeitado mostra a razão do motor. `input_invalid` marca uma estrutura de landmarks incompleta sem guardar as coordenadas.
+
+Razões do jogo: `no_session` (motor encerrado), `paused`, `round_transition` (intervalo sem cronômetro ativo), `wrong_letter`, `accepted`, `inactive_screen` (menu/resultado) e, na Forca, `repeated_letter`. No reconhecimento, as razões incluem `no_hand`, `invalid_landmarks`, `below_threshold`, `stabilizing`, `motion_in_progress`, `motion_rejected`, `cooldown`, `wait_release` e `residual_base`. Eventos `hold_reset` distinguem `candidate_changed`, `candidate_lost` e `motion_preparing`; `motion_rejected` distingue trajetória incompleta ou incoerente. Uma candidata exibida não equivale a confirmação; uma confirmação emitida também pode ser rejeitada pelo estado do jogo. O relógio do Soletrar segue ativo durante cooldown; sua duração não foi alterada.
 
 ## Webcam, privacidade e erros
 
@@ -142,7 +159,7 @@ Falhas de permissão, câmera ausente ou ocupada e erros de inferência mostram 
 
 ## Testes e validação
 
-Os testes focados das FASES 01 a 03.1.3 usam o runner nativo do Node. A suíte atual passou com **110 testes**; a FASE 03.1.3 ampliou a cobertura de seleção e navegação por nível no harness existente. A contagem e os resultados executados estão em [specs/testing.md](specs/testing.md). A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
+Os testes focados das FASES 01 a 03.2 usam o runner nativo do Node. A suíte da FASE 03.2 cobre diagnóstico e decisões do Soletrar no harness existente; contagem e resultados executados estão em [specs/testing.md](specs/testing.md). A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
 
 ```powershell
 npm.cmd test

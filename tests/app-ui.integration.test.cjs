@@ -1285,6 +1285,306 @@ test('real UI renders the results screen and current-session statistics on a nat
   assert.equal(r.elements.get('#results-best').textContent, game.best);
 });
 
+test('Soletrar marca a última letra como concluída antes do avanço pendente', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const ui = new r.UI(new r.LibrasEngine(), game, new r.ForcaGame());
+  r.cards[1].click();
+  assert.equal(ui.currentScreen, 'play');
+  game.target = 'AA';
+  game.wordIndex = 0;
+  game.handleSign('A');
+  game.handleSign('A');
+  assert.equal(game.wordIndex, 2);
+  assert.equal((r.elements.get('#target-word').innerHTML.match(/is-done/g) || []).length, 2);
+  assert.equal(game._timerId, null);
+  assert.ok(game._advanceId);
+});
+
+test('Soletrar relata aceitação, letra errada, pausa e avanço sem perder o estado', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const libras = new r.LibrasEngine();
+  new r.UI(libras, game, new r.ForcaGame());
+  r.cards[1].click();
+  game.target = 'AA';
+  game.wordIndex = 0;
+  assert.equal(game.handleSign('B'), 'wrong_letter');
+  assert.equal(game.wordIndex, 0);
+  assert.equal(game.handleSign('A'), 'accepted');
+  assert.equal(game.wordIndex, 1);
+  game.pause();
+  assert.equal(game.handleSign('A'), 'paused');
+  game.resume();
+  assert.equal(game.handleSign('A'), 'accepted');
+  assert.equal(game.handleSign('A'), 'round_transition');
+  const round = game.round;
+  r.clock.advance(450);
+  assert.equal(game.round, round + 1);
+  assert.equal(game.wordIndex, 0);
+  game.end();
+  assert.equal(game.handleSign('A'), 'no_session');
+});
+
+test('diagnóstico começa desligado e mantém somente eventos seguros e limitados', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  assert.ok(diag);
+  assert.equal(diag.read().enabled, false);
+  const engine = new r.LibrasEngine();
+  engine.update({ landmarks: [pose('A')] }, 0, 20);
+  assert.equal(diag.read().events.length, 0);
+  diag.enable();
+  for (let at = 50; at <= 700; at += 50) engine.update({ landmarks: [pose('A')] }, at, 20);
+  assert.ok(diag.read().events.some((event) => event.type === 'signconfirmed'));
+  for (let at = 750; at <= 30000; at += 50) engine.update({ landmarks: [pose('A')] }, at, 20);
+  const report = diag.read();
+  assert.equal(report.enabled, true);
+  assert.ok(report.events.some((event) => event.type === 'recognition'));
+  assert.ok(report.events.length <= 120);
+  assert.equal(report.events.length, 120);
+  assert.equal(report.events.some((event) => 'landmarks' in event || 'features' in event), false);
+  report.events[0].type = 'altered';
+  assert.notEqual(diag.read().events[0].type, 'altered');
+  diag.disable();
+  assert.equal(diag.read().events.length, 0);
+});
+
+test('trilha do Soletrar separa emissão, recebimento, decisão e atualização visual', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const libras = new r.LibrasEngine();
+  new r.UI(libras, game, new r.ForcaGame());
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  r.cards[1].click();
+  game.target = 'AA';
+  game.wordIndex = 0;
+  for (let at = 100; at <= 750; at += 50) {
+    r.clock.now = at;
+    libras.update({ landmarks: [pose('A')] }, at, 20);
+  }
+  assert.equal(game.wordIndex, 1);
+  const events = diag.read().events;
+  for (const type of ['recognition', 'signconfirmed', 'ui_received', 'game_decision', 'ui_target']) {
+    assert.ok(events.some((event) => event.type === type), type);
+  }
+  assert.ok(events.some((event) => event.type === 'game_decision' &&
+    event.reason === 'accepted' && event.expected === 'A' && event.mode === 'word'));
+  assert.equal(libras.count('signconfirmed'), 1);
+});
+
+test('diagnóstico distingue menu, letra errada e rodada em transição sem listeners extras', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const libras = new r.LibrasEngine();
+  const forca = new r.ForcaGame();
+  new r.UI(libras, game, forca);
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  libras.dispatchEvent(new r.CustomEvent('signconfirmed', { detail: { letter: 'A' } }));
+  r.cards[1].click();
+  game.target = 'AA';
+  libras.dispatchEvent(new r.CustomEvent('signconfirmed', { detail: { letter: 'B' } }));
+  libras.dispatchEvent(new r.CustomEvent('signconfirmed', { detail: { letter: 'A' } }));
+  libras.dispatchEvent(new r.CustomEvent('signconfirmed', { detail: { letter: 'A' } }));
+  libras.dispatchEvent(new r.CustomEvent('signconfirmed', { detail: { letter: 'A' } }));
+  r.elements.get('#exit-btn').click();
+  r.cards[2].click();
+  libras.dispatchEvent(new r.CustomEvent('signconfirmed', { detail: { letter: forca.word[0] } }));
+  const reasons = diag.read().events.filter((event) => event.type === 'game_decision').map((event) => event.reason);
+  for (const reason of ['inactive_screen', 'wrong_letter', 'accepted', 'round_transition']) {
+    assert.ok(reasons.includes(reason), reason);
+  }
+  assert.equal(libras.count('signconfirmed'), 1);
+});
+
+test('Soletrar com letras iguais exige liberação e timeout descarta avanço anterior', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const libras = new r.LibrasEngine();
+  new r.UI(libras, game, new r.ForcaGame());
+  r.cards[1].click();
+  game.target = 'AA';
+  game.wordIndex = 0;
+  for (let at = 100; at <= 750; at += 50) {
+    r.clock.now = at;
+    libras.update({ landmarks: [pose('A')] }, at, 20);
+  }
+  assert.equal(game.wordIndex, 1);
+  for (let at = 800; at <= 1500; at += 50) {
+    r.clock.now = at;
+    libras.update({ landmarks: [pose('A')] }, at, 20);
+  }
+  assert.equal(game.wordIndex, 1);
+  for (let at = 1550; at <= 1850; at += 50) {
+    r.clock.now = at;
+    libras.update({ landmarks: [] }, at, 20);
+  }
+  for (let at = 1900; at <= 2600; at += 50) {
+    r.clock.now = at;
+    libras.update({ landmarks: [pose('A')] }, at, 20);
+  }
+  assert.equal(game.wordIndex, 2);
+  const round = game.round;
+  r.clock.advance(450);
+  assert.equal(game.round, round + 1);
+  const nextRound = game.round;
+  r.clock.advance(game._roundMs + 450);
+  assert.equal(game.round, nextRound + 1);
+  assert.equal(game.wordIndex, 0);
+});
+
+test('landmarks inválidos são registrados sem derrubar o loop quando diagnóstico está ativo', async () => {
+  const r = await browserRuntime();
+  r.clickStart();
+  await r.settle();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  r.setDetectionResult({ landmarks: [[{ x: 0.5, y: 0.5 }]] });
+  r.video.currentTime = 1;
+  r.clock.now = 100;
+  r.raf.step(100);
+  assert.ok(diag.read().events.some((event) => event.type === 'input_invalid' && event.landmarksValid === false));
+  assert.ok(diag.read().events.some((event) => event.type === 'recognition' &&
+    event.landmarksValid === false && event.reason === 'invalid_landmarks'));
+  assert.equal(r.frames.size, 1);
+  assert.equal(r.logs.errors.length, 0);
+});
+
+test('Soletrar registra timeout ocorrido durante cooldown após uma letra errada', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const libras = new r.LibrasEngine();
+  new r.UI(libras, game, new r.ForcaGame());
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  r.cards[1].click();
+  game.target = 'B';
+  game.wordIndex = 0;
+  r.clock.advance(game._roundMs - 1100);
+  for (let i = 0; i <= 13; i++) {
+    r.clock.advance(50);
+    libras.update({ landmarks: [pose('A')] }, r.clock.now, 20);
+  }
+  assert.ok(diag.read().events.some((event) => event.type === 'game_decision' && event.reason === 'wrong_letter'));
+  r.clock.advance(50);
+  libras.update({ landmarks: [pose('A')] }, r.clock.now, 20);
+  assert.equal(libras.state.recognitionPhase, 'COOLDOWN');
+  r.clock.advance(game.timeLeft);
+  const timeout = diag.read().events.find((event) => event.type === 'game_timeout');
+  assert.equal(timeout?.phase, 'COOLDOWN');
+  assert.equal(timeout?.reason, 'timer_expired');
+  assert.equal(game._timerId, null);
+  assert.ok(game._advanceId);
+});
+
+test('diagnóstico distingue trajetória J de pose-base e registra pausa e retomada', async () => {
+  const r = await browserRuntime();
+  r.clickStart();
+  await r.settle();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  r.cards[1].click();
+  const engine = instance(r, r.LibrasEngine);
+  J_PATH.forEach(([dx, dy], i) => {
+    const at = 100 + i * 50;
+    r.clock.now = at;
+    engine.update({ landmarks: [pose('J', dx, dy)] }, at, 20);
+  });
+  const before = diag.read().events;
+  assert.ok(before.some((event) => event.type === 'recognition' && event.motionLetter === 'J' && event.motionProgress > 0));
+  assert.ok(before.some((event) => event.type === 'signconfirmed' && event.letter === 'J'));
+  r.document.hidden = true;
+  r.dispatchDocument('visibilitychange');
+  r.document.hidden = false;
+  r.dispatchDocument('visibilitychange');
+  await r.settle();
+  const types = diag.read().events.map((event) => event.type);
+  assert.ok(types.includes('app_pause'));
+  assert.ok(types.includes('tracking_reset'));
+  assert.ok(types.includes('app_resume'));
+  assert.equal(r.frames.size, 1);
+});
+
+test('Soletrar troca rapidamente de banco e cancela o avanço da palavra anterior', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  game.startWord(1);
+  assert.ok(r.data.wordBank(1).includes(game.target));
+  game.target = 'A';
+  assert.equal(game.handleSign('A'), 'accepted');
+  const staleAdvance = game._advanceId;
+  assert.ok(staleAdvance);
+  game.startWord(2);
+  assert.ok(r.data.wordBank(2).includes(game.target));
+  assert.equal(game.wordIndex, 0);
+  assert.equal(game.round, 1);
+  assert.equal(r.clock.tasks.has(staleAdvance), false);
+  r.clock.advance(450);
+  assert.equal(game.round, 1);
+  game.end();
+  assert.equal(r.clock.tasks.size, 0);
+});
+
+test('painel diagnóstico limita escrita no DOM e desliga a captura pela tecla d', async () => {
+  const r = await browserRuntime();
+  const engine = new r.LibrasEngine();
+  new r.UI(engine, new r.Game(), new r.ForcaGame());
+  const diag = r.window.librasArcadeDiagnostics;
+  const panel = r.elements.get('#diag-json');
+  let writes = 0;
+  let value = '';
+  Object.defineProperty(panel, 'textContent', {
+    get: () => value,
+    set: (next) => { writes++; value = next; }
+  });
+  r.dispatchWindow('keydown', { key: 'd' });
+  assert.equal(diag.read().enabled, true);
+  for (let at = 50; at <= 500; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [pose('A')] }, at, 20);
+  }
+  assert.ok(writes >= 2 && writes <= 4, `escritas: ${writes}`);
+  r.dispatchWindow('keydown', { key: 'd' });
+  assert.equal(diag.read().enabled, false);
+  assert.equal(diag.read().events.length, 0);
+});
+
+test('diagnóstico expõe o empate heurístico I/Y sem tratá-lo como probabilidade', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  const engine = new r.LibrasEngine();
+  const hand = pose('J');
+  hand[4] = { x: .8, y: .75, z: 0 }; // afasta a pinça de O mantendo o polegar aberto de Y
+  engine.update({ landmarks: [hand] }, 100, 20);
+  const sample = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal(sample.candidate, 'I');
+  assert.equal(sample.second, 'Y');
+  assert.equal(sample.gap, 0);
+  assert.equal(sample.candidateEligible, true);
+});
+
+test('diagnóstico informa troca de candidata e rejeição de trajetória incoerente', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  const engine = new r.LibrasEngine();
+  engine.update({ landmarks: [pose('A')] }, 100, 20);
+  engine.update({ landmarks: [pose('J')] }, 200, 20);
+  assert.ok(diag.read().events.some((event) => event.type === 'hold_reset' &&
+    event.reason === 'candidate_changed' && event.candidate === 'A' && event.second === 'I'));
+  const motion = new r.LibrasEngine();
+  for (let at = 0; at <= 800; at += 50) {
+    const dx = .15 * Math.sin(2 * Math.PI * at / 300);
+    const dy = .08 * Math.sin(2 * Math.PI * at / 600);
+    motion.update({ landmarks: [pose('J', dx, dy)] }, at, 20);
+  }
+  assert.ok(diag.read().events.some((event) => event.type === 'motion_rejected' &&
+    event.reason === 'incoherent_trajectory'));
+});
+
 test('pending model initialization is cancelled on pagehide and retried after restoration', async () => {
   const modelPending = deferred();
   let modelRequests = 0;
