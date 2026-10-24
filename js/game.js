@@ -56,6 +56,11 @@ export class Game extends EventTarget {
     this.target = null;        // letra alvo atual (practice) ou palavra atual (word)
     this.wordIndex = 0;        // posição da letra dentro da palavra (word mode)
     this.queue = [];           // fila de letras/palavras restantes
+    this.practiceSet = 'level'; // 'level' mantém sorteio pedagógico; 'all' percorre A–Z
+    this.practiceLetters = [];
+    this.practiceIndex = -1;
+    this.practiceHistory = [];
+    this.practiceHistoryIndex = -1;
     this.hitsSinceLevelUp = 0; // acertos desde a última subida de nível
 
     this._timerId = null;
@@ -69,32 +74,96 @@ export class Game extends EventTarget {
   }
 
   /* -------------------------------------------------------- practice --- */
-  /** Inicia Treino com fila filtrada pela dificuldade e zera a sequência da sessão anterior. */
+  /** Inicia Treino por nível ou com 'all' para validar A–Z em ordem, sem alterar os níveis. */
   startPractice(level = 1) {
     this._clearActivity();
     this._paused = false;
     this.mode = 'practice';
-    this.level = level;
+    this.practiceSet = level === 'all' ? 'all' : 'level';
+    this.level = this.practiceSet === 'all' ? 1 : level;
     this.score = 0;
     this.streak = 0;
     this.bestStreak = 0;
     this.round = 0;
     this.hitsSinceLevelUp = 0;
-    const pool = LETTER_POOL.filter((l) => LETTERS[l].difficulty <= level);
-    this.queue = shuffle(pool.length ? pool : LETTER_POOL);
+    this.practiceLetters = this.practiceSet === 'all' ? [...LETTER_POOL].sort() : [];
+    this.practiceIndex = -1;
+    this.practiceHistory = [];
+    this.practiceHistoryIndex = -1;
+    const pool = LETTER_POOL.filter((l) => LETTERS[l].difficulty <= this.level);
+    this.queue = this.practiceSet === 'all' ? [] : shuffle(pool.length ? pool : LETTER_POOL);
     this._nextPracticeTarget();
     this.dispatchEvent(new CustomEvent('start', { detail: this._snapshot() }));
   }
 
   _nextPracticeTarget() {
+    if (this.practiceSet === 'all') {
+      this.practiceIndex = (this.practiceIndex + 1) % this.practiceLetters.length;
+      this._setPracticeTarget(this.practiceLetters[this.practiceIndex]);
+      return;
+    }
     if (this.queue.length === 0) {
       const pool = LETTER_POOL.filter((l) => LETTERS[l].difficulty <= this.level);
       this.queue = shuffle(pool.length ? pool : LETTER_POOL);
     }
-    this.target = this.queue.shift();
+    this.practiceHistory.length = this.practiceHistoryIndex + 1;
+    this._setPracticeTarget(this.queue.shift());
+  }
+
+  _setPracticeTarget(letter) {
+    if (this.practiceSet === 'level' && this.practiceHistoryIndex === this.practiceHistory.length - 1) {
+      this.practiceHistory.push(letter);
+      // O histórico serve somente à navegação manual; limite fixo evita crescimento em sessões longas.
+      if (this.practiceHistory.length > 52) this.practiceHistory.shift();
+      this.practiceHistoryIndex = this.practiceHistory.length - 1;
+    }
+    this.target = letter;
     this.round += 1;
     this._startTimer();
     this.dispatchEvent(new CustomEvent('newtarget', { detail: this._snapshot() }));
+  }
+
+  /** Troca o alvo do Treino; A–Z é circular, enquanto níveis preservam sorteio e histórico.
+   * Cancela o avanço pendente e reinicia o cronômetro sem alterar placar ou sequência.
+   */
+  navigatePracticeTarget(destination = 1) {
+    if (this.mode !== 'practice' || this._paused) return false;
+    if (this.practiceSet === 'all') {
+      const size = this.practiceLetters.length;
+      const index = typeof destination === 'string'
+        ? this.practiceLetters.indexOf(destination)
+        : (destination === 1 || destination === -1)
+          ? (this.practiceIndex + destination + size) % size
+          : -1;
+      if (index < 0) return false;
+      this._clearAdvance();
+      this.practiceIndex = index;
+      this._setPracticeTarget(this.practiceLetters[index]);
+      return true;
+    }
+    const pool = LETTER_POOL.filter((letter) => LETTERS[letter].difficulty <= this.level);
+    if (typeof destination === 'string' && !pool.includes(destination)) return false;
+    if (destination === -1 && this.practiceHistoryIndex < 1) return false;
+    if (destination !== 1 && destination !== -1 && typeof destination !== 'string') return false;
+    this._clearAdvance();
+    if (destination === -1) {
+      this.practiceHistoryIndex -= 1;
+      this._setPracticeTarget(this.practiceHistory[this.practiceHistoryIndex]);
+    } else if (destination === 1 && this.practiceHistoryIndex < this.practiceHistory.length - 1) {
+      this.practiceHistoryIndex += 1;
+      this._setPracticeTarget(this.practiceHistory[this.practiceHistoryIndex]);
+    } else if (typeof destination === 'string') {
+      this.practiceHistory.length = this.practiceHistoryIndex + 1;
+      this._setPracticeTarget(destination);
+    } else {
+      this._nextPracticeTarget();
+    }
+    return true;
+  }
+
+  /** Compatibilidade com o botão Próxima letra da FASE 03.1.2. */
+  skipPracticeTarget() {
+    return this.navigatePracticeTarget(1);
   }
 
   /* ------------------------------------------------------------ word --- */
@@ -103,6 +172,11 @@ export class Game extends EventTarget {
     this._clearActivity();
     this._paused = false;
     this.mode = 'word';
+    this.practiceSet = 'level';
+    this.practiceLetters = [];
+    this.practiceIndex = -1;
+    this.practiceHistory = [];
+    this.practiceHistoryIndex = -1;
     this.level = level;
     this.score = 0;
     this.streak = 0;
@@ -175,6 +249,7 @@ export class Game extends EventTarget {
    *  fila atual, forçando o próximo alvo a ser sorteado já do pool/banco de
    *  palavras do novo nível. Retorna true se subiu de nível neste acerto. */
   _registerHitForLevelUp() {
+    if (this.mode === 'practice' && this.practiceSet === 'all') return false;
     this.hitsSinceLevelUp += 1;
     if (this.hitsSinceLevelUp < HITS_PER_LEVEL_UP) return false;
 
@@ -326,6 +401,9 @@ export class Game extends EventTarget {
       bestStreak: this.bestStreak,
       round: this.round,
       target: this.target,
+      practiceSet: this.mode === 'practice' ? this.practiceSet : null,
+      practicePosition: this.mode === 'practice' && this.practiceSet === 'all' ? this.practiceIndex + 1 : null,
+      practiceCount: this.mode === 'practice' && this.practiceSet === 'all' ? this.practiceLetters.length : null,
       wordIndex: this.wordIndex,
       timeLeft: this.timeLeft
     };

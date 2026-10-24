@@ -2,7 +2,7 @@
 
 Jogo educacional de datilologia em Libras, desenvolvido no contexto de uma Liga de Inteligência Artificial. A webcam fornece landmarks da mão para um classificador geométrico executado no navegador, que alimenta os modos **Treino, Soletrar e Forca**.
 
-Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02, as correções de armazenamento e estatísticas da FASE 02.1, o cooldown da FASE 03 e a arbitragem estática/dinâmica da FASE 03.1. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
+Esta documentação descreve a auditoria da FASE 00, as alterações de performance da FASE 01, o ciclo de vida da câmera da FASE 02, as correções de armazenamento e estatísticas da FASE 02.1, o cooldown da FASE 03, a arbitragem estática/dinâmica da FASE 03.1 e as correções da FASE 03.1.2. A aplicação atual continua em JavaScript, sem backend Python, TypeScript ou etapa de treinamento de letras.
 
 Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arcade).
 
@@ -10,11 +10,11 @@ Repositório: [Darkzin41/Libras_arcade](https://github.com/Darkzin41/Libras_arca
 
 | Modo | Funcionamento atual | Progressão |
 | --- | --- | --- |
-| Treino | Sorteia uma letra conforme a dificuldade. A letra confirmada é comparada com o alvo; acertos somam pontos, erros e tempo esgotado zeram a sequência. | Sobe um nível a cada 5 letras corretas, até o nível 5. |
+| Treino | Nos níveis tradicionais, sorteia letras conforme a dificuldade. **Todas as letras (A–Z)** percorre as 26 letras em ordem, inclusive J e Z, para validação individual. Acertos somam pontos; os controles manuais trocam o alvo sem pontuar nem alterar a sequência. | Nos níveis tradicionais, sobe um nível a cada 5 letras corretas, até o nível 5. O conjunto A–Z mantém o tempo do nível 1 e não sobe de nível. |
 | Soletrar | Sorteia uma palavra e recebe suas letras em ordem. O cronômetro é por letra; completar a palavra acrescenta bônus. | Sobe um nível a cada 5 letras corretas, até o nível 5. |
 | Forca | Sorteia palavra e dica. Cada palpite correto revela todas as ocorrências; repetidos não acrescentam erros. Com 6 erros, perde-se a rodada. Não há cronômetro. | Sobe um nível a cada 3 palavras vencidas, até o nível 5. |
 
-O menu permite escolher os níveis iniciais 1, 2 e 3; os níveis 4 e 5 são alcançados pela progressão. Treino e Soletrar compartilham um recorde local; a Forca mantém outro. A melhor sequência de Treino/Soletrar e as vitórias da Forca pertencem à sessão atual. Não há limite de rodadas para encerrar automaticamente a sessão. Após vitória/derrota na Forca, uma nova palavra começa após 1,6 s; no Treino e ao concluir uma palavra, a pausa de avanço é de 450 ms.
+O menu permite escolher os níveis iniciais 1, 2 e 3; os níveis 4 e 5 são alcançados pela progressão. O cartão do Treino oferece também o botão **Todas as letras (A–Z)**, que inicia diretamente o conjunto completo sem modificar a seleção dos níveis. Treino e Soletrar compartilham um recorde local; a Forca mantém outro. A melhor sequência de Treino/Soletrar e as vitórias da Forca pertencem à sessão atual. Não há limite de rodadas para encerrar automaticamente a sessão. Após vitória/derrota na Forca, uma nova palavra começa após 1,6 s; no Treino e ao concluir uma palavra, a pausa de avanço é de 450 ms.
 
 ## Como executar
 
@@ -40,17 +40,18 @@ Alternativas existentes de desenvolvimento: Live Server do VS Code ou `npx serve
 | Ação | Entrada implementada |
 | --- | --- |
 | Escolher um modo | Clique/toque ou cursor do indicador com pinça sobre o cartão. |
-| Escolher nível inicial | Clique/toque nos números 1–3; não há seleção de nível por gesto implementada. |
+| Escolher Treino | O botão destacado **Todas as letras** abre A–Z (26 letras). Para a progressão tradicional, escolha 1–3 e acione **Iniciar nível selecionado**; os botões funcionam com teclado, mouse e toque. Não há seleção de nível por gesto implementada. |
 | Confirmar letra estática | Sustentar a candidata por 600 ms, com tolerância de 250 ms a perda breve da candidata. |
 | Confirmar J/Z | Formar pose-base e executar uma trajetória nova; pequenos ajustes da pose-base não cancelam indefinidamente o hold de I/D. |
 | Preparar a próxima letra | Após confirmar, aguardar ao menos 900 ms. Para repetir uma letra estática, deixar de apresentar candidata por 250 ms; para outra letra estática, mantê-la detectada por 300 ms. J/Z podem ser observados durante a espera, mas só uma trajetória válida concluída após o cooldown emite evento. |
 | Após J/Z | I/D são poses residuais de J/Z e não confirmam automaticamente. Para sinalizar I/D em seguida, libere a candidata por 250 ms ou faça outra pose estável. Para outro J/Z com a mesma pose-base, pause a ponta do dedo e desenhe novo trajeto. |
+| Navegar no Treino | **← Anterior**, **Próxima letra →** e **Escolher letra** aparecem em toda sessão de Treino. Em A–Z, Próxima após Z retorna a A e Anterior em A retorna a Z; a posição, como “8 de 26”, aparece acima da letra. Nos níveis, Anterior percorre as letras já visitadas e fica visível, porém desabilitado antes da segunda letra; Próxima conserva o sorteio pedagógico ao avançar além do histórico. O seletor oferece somente as letras do nível atual. Cada troca reinicia o tempo e limpa o gesto pendente, sem mudar pontuação, recorde ou sequência. Os controles não aparecem em Soletrar, Forca ou menu. |
 | Abrir guia | Botões “Guia do alfabeto” ou “Aprender Libras”. |
 | Sair da rodada | Botão Sair, `Esc`, pinça sobre Sair ou deslize da mão da esquerda para a direita na imagem espelhada. |
 | Fechar guia | Clique em Fechar, `Esc`, deslize ou punho fechado fora das telas de jogo. |
 | Abrir diagnóstico | Tecla `d`; o painel fica oculto pelo CSS em telas de até 720 px. |
 
-Mouse/toque são alternativas de **navegação**; as respostas dos jogos continuam dependendo do reconhecimento. O teclado desenhado na Forca é um indicador de palpites, sem entrada por clique. O suporte de navegação por teclado está incompleto: os cartões recebem foco, mas não tratam Enter/Espaço.
+Mouse/toque são alternativas de **navegação**; as respostas dos jogos continuam dependendo do reconhecimento. O teclado desenhado na Forca é um indicador de palpites, sem entrada por clique. O Treino tem botões nativos para escolher conjunto, nível e alvo por teclado. O suporte geral de navegação por teclado ainda está incompleto: os cartões recebem foco, mas não tratam Enter/Espaço.
 
 Há marcação de identificação do jogador e ranking, porém o ranking não tem preenchimento/persistência implementados e faltam estilos específicos desses painéis. A presença dos botões não significa um ranking funcional. Veja os achados no [roadmap](docs/ROADMAP.md).
 
@@ -61,13 +62,13 @@ A cobertura **nominal** do código é de 26 letras:
 - Regras estáticas: `A B C D E F G H I K L M N O P Q R S T U V W X Y`.
 - Trajetórias experimentais: `J Z`.
 
-Essa lista descreve a implementação, não comprova precisão, conformidade pedagógica ou reconhecimento confiável de todas as letras. H, K e X, por exemplo, são tratados como poses estáticas neste código; isso não é uma afirmação linguística sobre a realização correta desses sinais em Libras.
+Essa lista descreve a implementação, não comprova precisão, conformidade pedagógica ou reconhecimento confiável de todas as letras. O conjunto A–Z do Treino disponibiliza todas as letras nominalmente cadastradas, sem homologar seu reconhecimento com webcam real. H, K e X, por exemplo, são tratados como poses estáticas neste código; isso não é uma afirmação linguística sobre a realização correta desses sinais em Libras.
 
 O MediaPipe detecta a mão e seus 21 pontos; a classificação das letras é feita por regras próprias. Distâncias são normalizadas pela distância entre pulso e base do dedo médio, com proteção contra divisão por zero. Extensão/curvatura de dedos, posição do polegar, distâncias e orientação recebem escores fuzzy. A maior pontuação acima de `MIN_SCORE = 0.55` vira candidata. O percentual apresentado como “confiança” é um escore heurístico, sem calibração estatística.
 
 O cooldown bloqueia apenas novas confirmações. Vídeo, inferência, desenho, cursor e gesto de voltar continuam ativos. O texto discreto na barra inferior indica detecção, confirmação, preparação ou prontidão; a barra circular zera durante a espera. O valor de 900 ms é uma hipótese inicial para teste com jogadores. No Soletrar, o cronômetro por letra continua em curso durante a espera por cooldown/rearmamento; sua duração será revista somente na FASE 04.
 
-J/Z usam histórico de até 1.300 ms, suavização por 3 amostras, mínimo de 6 amostras e critérios de trajetória. Na FASE 03.1, o hold da pose-base só é suspenso por deslocamento líquido recente com uma curta tolerância à continuação; trajetória parcial que cessa devolve I/D ao hold. Amostras da pose-base imóvel anteriores ao movimento não entram no desenho. Uma perda de landmarks de até 300 ms pode preservar o trajeto incompleto; pausas/sessões e perdas mais longas o descartam. Isso é uma arbitragem heurística ainda sem calibração com webcam. Há também desempates por ordem de regras, como o caso sintético de I/Y registrado na auditoria. Iluminação, oclusão, escala, posição, orientação e frequência de frames precisam de avaliação real.
+J/Z usam histórico de até 1.300 ms, suavização por 3 amostras, mínimo de 6 amostras e critérios de trajetória. Na FASE 03.1, o hold da pose-base passou a ser suspenso por deslocamento líquido recente. Na FASE 03.1.2, a intenção também requer progressão vertical, Z exige três traços alternados com avanço vertical coerente e J exige avanço vertical no gancho. Vai-e-vem incompatível é descartado para permitir o hold de D/I; uma nova tentativa dinâmica requer pausa observável da ponta. Uma perda de landmarks de até 300 ms pode preservar o trajeto incompleto; pausas/sessões e perdas mais longas o descartam. Os limiares são heurísticos ainda sem calibração com webcam. I e Y compartilham componentes de escore e podem alternar a candidata; essa classificação permanece pendente da FASE 03.2. Iluminação, oclusão, escala, posição, orientação e frequência de frames precisam de avaliação real.
 
 A configuração atual detecta **uma mão** (`numHands: 1`), atribui a primeira detecção ao papel lógico `right` e mantém `REQUIRE_LEFT_HAND: false`. Não identifica lateralidade nesse caminho. O painel de duas mãos é um resquício de outra configuração; ativar só a flag da esquerda impediria confirmações.
 
@@ -125,7 +126,7 @@ O snapshot retorna FPS, callbacks, inferências e callbacks ignorados por frame 
 
 Há comparação com MediaPipe real, vídeo controlado sem mãos e os três modos em Edge/Windows. Protocolo, números, arquivos brutos e avaliação de Worker/rVFC estão no [relatório da FASE 01](docs/performance/FASE01.md). O ganho comprovado é a remoção de trabalho redundante do Canvas; variação de tempo do modelo não é atribuída à alteração. Não há medição de CPU/RAM total nem homologação de precisão por webcam.
 
-`detectForVideo()` continua síncrono na thread principal. A FASE 03.1 observa trajetórias também durante cooldown para permitir uma nova intenção D→Z/I→J; não há timers por frame nem alteração da frequência de inferência, mas esse caminho faz trabalho adicional quando há pose-base J/Z. Permanecem alocações de eventos, objetos e arrays; o diagnóstico aberto serializa JSON a cada frame. CPU/RAM após a mudança não foram medidos. Worker e `requestVideoFrameCallback` não foram adotados, conforme justificativas e limites registrados no relatório.
+`detectForVideo()` continua síncrono na thread principal. As FASES 03.1/03.1.2 observam e avaliam trajetórias também durante cooldown para permitir D→Z/I→J e rejeitar oscilações; não há timers por frame nem alteração da frequência de inferência, mas esse caminho faz trabalho adicional quando há pose-base J/Z. Permanecem alocações de eventos, objetos e arrays; o diagnóstico aberto serializa JSON a cada frame. CPU/RAM após a mudança não foram medidos. Worker e `requestVideoFrameCallback` não foram adotados, conforme justificativas e limites registrados no relatório.
 
 ## Webcam, privacidade e erros
 
@@ -141,7 +142,7 @@ Falhas de permissão, câmera ausente ou ocupada e erros de inferência mostram 
 
 ## Testes e validação
 
-Os testes focados das FASES 01 a 03.1 usam o runner nativo do Node. A suíte atual inclui os **60 testes anteriores** e cenários adicionais de arbitragem em `tests/app-ui.integration.test.cjs`: D/I, J/Z, cooldown, pose residual, perdas de landmarks e troca de sessão. A contagem e os resultados executados estão em [specs/testing.md](specs/testing.md). A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
+Os testes focados das FASES 01 a 03.1.3 usam o runner nativo do Node. A suíte atual passou com **110 testes**; a FASE 03.1.3 ampliou a cobertura de seleção e navegação por nível no harness existente. A contagem e os resultados executados estão em [specs/testing.md](specs/testing.md). A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
 
 ```powershell
 npm.cmd test

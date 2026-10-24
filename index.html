@@ -105,10 +105,21 @@
             <p>Sinalize a letra mostrada na tela o mais rápido possível. Ótimo para aprender uma letra de cada vez.</p>
             <div class="mode-tags mono"><span>DATILOLOGIA</span><span>1 LETRA</span></div>
           </div>
-          <div class="level-pick" data-for="practice">
-            <span class="level-dot mono is-active" data-level="1">1</span>
-            <span class="level-dot mono" data-level="2">2</span>
-            <span class="level-dot mono" data-level="3">3</span>
+          <div class="practice-choice">
+            <button id="practice-all-btn" class="practice-all-option" type="button" aria-pressed="false">
+              <span class="practice-all-icon mono" aria-hidden="true">A–Z</span>
+              <span class="practice-all-copy"><strong>Todas as letras</strong><small>26 letras · A–Z, incluindo J e Z</small></span>
+              <span class="practice-all-arrow" aria-hidden="true">→</span>
+            </button>
+            <div class="practice-level-choice">
+              <span class="mono practice-level-label">TREINO POR NÍVEL</span>
+              <div class="level-pick" data-for="practice" role="group" aria-label="Nível do Treino">
+                <button class="level-dot mono is-active" data-level="1" type="button" aria-label="Nível 1" aria-pressed="true">1</button>
+                <button class="level-dot mono" data-level="2" type="button" aria-label="Nível 2" aria-pressed="false">2</button>
+                <button class="level-dot mono" data-level="3" type="button" aria-label="Nível 3" aria-pressed="false">3</button>
+              </div>
+              <button id="practice-start-btn" class="chip-btn practice-level-start" type="button">Iniciar nível selecionado <span aria-hidden="true">→</span></button>
+            </div>
           </div>
         </div>
 
@@ -162,7 +173,14 @@
         <span class="mono target-eyebrow" id="target-eyebrow">SINALIZE A LETRA</span>
 
         <!-- modo treino: uma letra grande -->
-        <div class="target-letter hidden" id="target-letter">A</div>
+        <div class="target-letter hidden" id="target-letter" aria-live="polite" aria-atomic="true">A</div>
+        <div id="practice-nav" class="practice-nav hidden" role="group" aria-label="Navegação das letras do Treino">
+          <button id="prev-practice-btn" class="chip-btn practice-nav-btn practice-prev hidden" type="button"><span aria-hidden="true">←</span> Anterior</button>
+          <button id="next-practice-btn" class="chip-btn practice-nav-btn practice-next hidden" type="button">Próxima letra <span aria-hidden="true">→</span></button>
+          <label id="practice-jump" class="practice-jump hidden" for="practice-letter-select">Escolher letra
+            <select id="practice-letter-select" class="practice-letter-select"></select>
+          </label>
+        </div>
         <!-- modo palavra: letras em sequência -->
         <div class="target-word hidden" id="target-word"></div>
 

@@ -205,6 +205,51 @@ test('D com pequenos ajustes contínuos confirma sem o trajeto de Z', async () =
   assert.deepEqual(rig.signs.map(([letter]) => letter), ['D']);
 });
 
+test('D com oscilação horizontal de 0,15 e período de 300 ms não confirma falso Z', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let at = 0; at <= 1800; at += 50) {
+    const dx = 0.15 * Math.sin(2 * Math.PI * at / 300);
+    const state = rig.frame('Z', at, dx);
+    assert.equal(state.letter, 'D');
+    assert.equal(state.score, 1);
+  }
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['D']);
+  assert.ok(rig.signs[0][1] >= 600);
+});
+
+test('oscilação horizontal prolongada com deriva vertical leve não desenha Z', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let at = 0; at <= 1800; at += 50) {
+    const dx = 0.15 * Math.sin(2 * Math.PI * at / 300);
+    rig.frame('Z', at, dx, at / 1800 * 0.12);
+  }
+  assert.equal(rig.signs.some(([letter]) => letter === 'Z'), false);
+  assert.equal(rig.signs.some(([letter]) => letter === 'D'), true);
+});
+
+test('vai-e-vem em dois eixos sem progressão espacial não desenha Z', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let at = 0; at <= 1800; at += 50) {
+    const dx = 0.15 * Math.sin(2 * Math.PI * at / 300);
+    const dy = 0.08 * Math.sin(2 * Math.PI * at / 600);
+    rig.frame('Z', at, dx, dy);
+  }
+  assert.equal(rig.signs.some(([letter]) => letter === 'Z'), false);
+  assert.equal(rig.signs.some(([letter]) => letter === 'D'), true);
+});
+
+for (const amplitude of [0.65, 1.25]) {
+  test(`Z intencional com amplitude ${amplitude} continua confirmável`, async () => {
+    const r = await browserRuntime();
+    const rig = recognitionRig(r);
+    rig.path('Z', 100, 40, Z_PATH.map(([x, y]) => [x * amplitude, y * amplitude]));
+    assert.deepEqual(rig.signs.map(([letter]) => letter), ['Z']);
+  });
+}
+
 test('D imóvel e prolongado confirma uma vez', async () => {
   const r = await browserRuntime();
   const rig = recognitionRig(r);
@@ -217,6 +262,60 @@ test('I com pequenas oscilações confirma sem um falso J', async () => {
   const rig = recognitionRig(r);
   for (let i = 0; i < 50; i++) rig.frame('J', 100 + i * 50, i % 2 ? .08 : 0);
   assert.deepEqual(rig.signs.map(([letter]) => letter), ['I']);
+});
+
+test('I detectado com movimento repetitivo do mindinho não perde confirmação para J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let at = 0; at <= 1800; at += 50) {
+    const dx = 0.15 * Math.sin(2 * Math.PI * at / 300);
+    const state = rig.frame('J', at, dx);
+    assert.equal(state.letter, 'I');
+  }
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['I']);
+});
+
+test('vai-e-vem do mindinho em dois eixos não forma gancho J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let at = 0; at <= 1800; at += 50) {
+    const dx = 0.15 * Math.sin(2 * Math.PI * at / 300);
+    const dy = 0.08 * Math.sin(2 * Math.PI * at / 600);
+    rig.frame('J', at, dx, dy);
+  }
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+  assert.equal(rig.signs.some(([letter]) => letter === 'I'), true);
+});
+
+test('após vai-e-vem rejeitado, pausa da ponta permite uma trajetória J nova', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let at = 0; at <= 800; at += 50) {
+    const dx = 0.15 * Math.sin(2 * Math.PI * at / 300);
+    const dy = 0.08 * Math.sin(2 * Math.PI * at / 600);
+    rig.frame('J', at, dx, dy);
+  }
+  rig.hold('J', 850, 1400);
+  rig.path('J', 1500);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['I', 'J']);
+});
+
+test('I estático detectado é emitido e recebido pelo Treino uma vez', async () => {
+  const r = await browserRuntime();
+  r.clickStart();
+  await r.settle();
+  r.cards[0].click();
+  const game = instance(r, r.Game);
+  const engine = instance(r, r.LibrasEngine);
+  game.target = 'I';
+  for (let at = 100; at <= 2000; at += 50) {
+    r.clock.now = at;
+    r.setDetectionResult({ landmarks: [pose('J')] });
+    r.video.currentTime += 1;
+    r.raf.step(at);
+  }
+  assert.equal(engine.dispatchCount('signconfirmed'), 1);
+  assert.equal(game.dispatchCount('correct'), 1);
 });
 
 test('D seguido de Z pode completar nova trajetória sem retirar a mão', async () => {
@@ -781,6 +880,311 @@ test('real UI navigates all modes, forwards confirmed signs and cancels the prev
   assert.equal(forca.count('start'), 1);
   assert.equal(libras.count('signconfirmed'), 1);
   assert.equal(ui.currentScreen, 'play');
+});
+
+test('Próxima letra avança imediatamente no Treino sem pontuar e fica oculta nos outros modos', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const forca = new r.ForcaGame();
+  const libras = new r.LibrasEngine();
+  new r.UI(libras, game, forca);
+  const next = r.elements.get('#next-practice-btn');
+  assert.equal(next.classList.contains('hidden'), true);
+  r.cards[0].click();
+  assert.equal(next.classList.contains('hidden'), false);
+  r.clock.advance(500);
+  assert.notEqual(r.elements.get('#timer-fill').style.width, '100%');
+  libras._advanceConfirmation('A', r.clock.now);
+  const before = { round: game.round, target: game.target, score: game.score, streak: game.streak };
+  next.click();
+  assert.equal(game.round, before.round + 1);
+  assert.notEqual(game.target, before.target);
+  assert.equal(game.score, before.score);
+  assert.equal(game.streak, before.streak);
+  assert.ok(game._timerId);
+  assert.equal(r.elements.get('#timer-fill').style.width, '100%');
+  assert.equal(libras.state.recognitionPhase, 'READY');
+  assert.equal(game.dispatchCount('correct'), 0);
+  assert.equal(game.dispatchCount('wrong'), 0);
+  r.cards[1].click();
+  assert.equal(next.classList.contains('hidden'), true);
+  const wordRound = game.round;
+  next.click();
+  assert.equal(game.round, wordRound);
+  r.cards[2].click();
+  assert.equal(next.classList.contains('hidden'), true);
+  r.elements.get('#exit-btn').click();
+  assert.equal(next.classList.contains('hidden'), true);
+  assert.equal(next.listenerCount('click'), 1);
+});
+
+test('avanço manual cancela progresso automático pendente e não age após pausa ou saída', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const forca = new r.ForcaGame();
+  const libras = new r.LibrasEngine();
+  new r.UI(libras, game, forca);
+  r.cards[0].click();
+  const next = r.elements.get('#next-practice-btn');
+  game.handleSign(game.target);
+  const score = game.score;
+  next.click();
+  const round = game.round;
+  r.clock.advance(500);
+  assert.equal(game.round, round);
+  assert.equal(game.score, score);
+  game.pause();
+  next.click();
+  assert.equal(game.round, round);
+  game.resume();
+  r.elements.get('#exit-btn').click();
+  next.click();
+  assert.equal(game.mode, null);
+  assert.equal(game.round, round);
+});
+
+test('Treino completo percorre as 26 letras únicas em ordem e volta de Z para A', async () => {
+  const r = await browserRuntime();
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  assert.deepEqual([...r.data.LETTER_POOL], alphabet);
+  const game = new r.Game();
+  game.startPractice('all');
+  const visited = [game.target];
+  for (let i = 1; i < 26; i++) {
+    assert.equal(game.skipPracticeTarget(), true);
+    visited.push(game.target);
+    assert.equal(game._snapshot().practicePosition, i + 1);
+  }
+  assert.deepEqual(visited, alphabet);
+  assert.equal(new Set(visited).size, 26);
+  assert.equal(game._snapshot().practiceCount, 26);
+  assert.equal(game.skipPracticeTarget(), true);
+  assert.equal(game.target, 'A');
+  assert.equal(game._snapshot().practicePosition, 1);
+  assert.equal(game.level, 1);
+});
+
+test('Anterior e seleção direta navegam o conjunto completo e respeitam os níveis tradicionais', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  game.startPractice('all');
+  assert.equal(game.navigatePracticeTarget(-1), true);
+  assert.equal(game.target, 'Z');
+  for (const letter of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    assert.equal(game.navigatePracticeTarget(letter), true);
+    assert.equal(game.target, letter);
+  }
+  const round = game.round;
+  assert.equal(game.navigatePracticeTarget('?'), false);
+  assert.equal(game.round, round);
+  for (const level of [1, 2, 3]) {
+    game.startPractice(level);
+    const expected = r.data.LETTER_POOL.filter((letter) => r.data.LETTERS[letter].difficulty <= level);
+    const seen = [game.target];
+    for (let i = 1; i < expected.length; i++) {
+      game.skipPracticeTarget();
+      seen.push(game.target);
+    }
+    assert.deepEqual([...seen].sort(), [...expected].sort());
+    assert.equal(game.navigatePracticeTarget(-1), true);
+    assert.equal(game.target, seen[seen.length - 2]);
+    assert.equal(game.navigatePracticeTarget(expected[0]), true);
+    assert.equal(game.target, expected[0]);
+    if (!expected.includes('Z')) assert.equal(game.navigatePracticeTarget('Z'), false);
+  }
+});
+
+test('navegação A–Z cancela avanço antigo, reinicia relógio e preserva pontuação e recorde', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  game.startPractice('all');
+  game.handleSign('A');
+  const before = { score: game.score, streak: game.streak, best: game.best, bestStreak: game.bestStreak };
+  assert.ok(game._advanceId);
+  assert.equal(game.navigatePracticeTarget('I'), true);
+  assert.equal(game.target, 'I');
+  assert.equal(game._advanceId, null);
+  assert.equal(game.timeLeft, game._roundMs);
+  assert.deepEqual(
+    { score: game.score, streak: game.streak, best: game.best, bestStreak: game.bestStreak },
+    before
+  );
+  const round = game.round;
+  r.clock.advance(500);
+  assert.equal(game.round, round);
+  assert.equal(r.clock.tasks.size, 1);
+  game.pause();
+  assert.equal(game.navigatePracticeTarget(-1), false);
+  game.resume();
+  game.end();
+  assert.equal(game.navigatePracticeTarget('Z'), false);
+  assert.equal(r.clock.tasks.size, 0);
+});
+
+test('Treino completo mantém avanço automático após acerto e tempo esgotado', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  game.startPractice('all');
+  game.handleSign('A');
+  r.clock.advance(450);
+  assert.equal(game.target, 'B');
+  const score = game.score;
+  r.clock.advance(game._roundMs);
+  assert.equal(game.target, 'B');
+  r.clock.advance(450);
+  assert.equal(game.target, 'C');
+  assert.equal(game.score, score);
+  assert.equal(game.streak, 0);
+  assert.equal(game.level, 1);
+});
+
+test('menu abre A–Z e controles manuais limpam cooldown e trajetória sem duplicar listeners', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const forca = new r.ForcaGame();
+  const libras = new r.LibrasEngine();
+  const ui = new r.UI(libras, game, forca);
+  const all = r.elements.get('#practice-all-btn');
+  const next = r.elements.get('#next-practice-btn');
+  const prev = r.elements.get('#prev-practice-btn');
+  const jump = r.elements.get('#practice-letter-select');
+  assert.equal(prev.classList.contains('hidden'), true);
+  all.click();
+  assert.equal(ui.currentScreen, 'play');
+  assert.equal(game.target, 'A');
+  assert.match(r.elements.get('#target-eyebrow').textContent, /1 DE 26/);
+  assert.equal(prev.classList.contains('hidden'), false);
+  assert.equal((jump.innerHTML.match(/<option /g) || []).length, 26);
+  libras._motionBuffer = [{ x: 1, y: 1, t: 1 }];
+  libras._advanceConfirmation('A', r.clock.now);
+  assert.notEqual(libras.state.recognitionPhase, 'READY');
+  jump.value = 'Y';
+  jump.dispatchEvent('change');
+  assert.equal(game.target, 'Y');
+  assert.equal(libras.state.recognitionPhase, 'READY');
+  assert.equal(libras._motionBuffer.length, 0);
+  assert.equal(jump.value, 'Y');
+  next.click();
+  assert.equal(game.target, 'Z');
+  prev.click();
+  assert.equal(game.target, 'Y');
+  assert.equal(next.listenerCount('click'), 1);
+  assert.equal(prev.listenerCount('click'), 1);
+  assert.equal(jump.listenerCount('change'), 1);
+  r.elements.get('#exit-btn').click();
+  assert.equal(prev.classList.contains('hidden'), true);
+  jump.value = 'D';
+  jump.dispatchEvent('change');
+  assert.equal(game.mode, null);
+  r.cards[0].click();
+  assert.equal(game.mode, 'practice');
+  assert.equal(game._snapshot().practiceSet, 'level');
+  assert.equal(prev.classList.contains('hidden'), false);
+  r.cards[1].click();
+  assert.equal(next.classList.contains('hidden'), true);
+  r.cards[2].click();
+  assert.equal(ui.currentScreen, 'forca-play');
+});
+
+test('controles do Treino têm marcação acessível e largura adaptável', () => {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'css/style.css'), 'utf8');
+  assert.match(html, /<button[^>]*id="practice-all-btn"[^>]*aria-pressed="false"/);
+  assert.match(html, /<button[^>]*id="practice-start-btn"[^>]*type="button"/);
+  assert.match(html, /data-for="practice"[^>]*role="group"/);
+  assert.match(html, /data-level="1"[^>]*aria-pressed="true"/);
+  assert.match(html, /<button[^>]*id="prev-practice-btn"/);
+  assert.match(html, /<button[^>]*id="next-practice-btn"/);
+  assert.match(html, /<select[^>]*id="practice-letter-select"/);
+  assert.match(html, /id="target-letter"[^>]*aria-live="polite"/);
+  assert.match(css, /\.practice-nav\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(css, /\.practice-nav-btn[^}]*min-height:\s*44px/);
+  assert.match(css, /\.practice-all-option\s*\{[^}]*min-height:\s*66px/);
+  assert.match(css, /\.practice-level-choice \.level-dot\{[^}]*width:44px; height:44px/);
+  assert.match(css, /\.practice-all-option:focus-visible/);
+  assert.match(css, /\.home\{[^}]*overflow-y:auto/);
+  assert.match(css, /#play\{[^}]*overflow-y:auto/);
+});
+
+test('Todas as letras comunica seleção e os níveis oferecem ação própria por botão', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const ui = new r.UI(new r.LibrasEngine(), game, new r.ForcaGame());
+  const all = r.elements.get('#practice-all-btn');
+  const startLevel = r.elements.get('#practice-start-btn');
+  all.click();
+  assert.equal(all['aria-pressed'], 'true');
+  assert.equal(all.classList.contains('is-selected'), true);
+  assert.equal(game.practiceSet, 'all');
+  ui.exitToHome();
+  r.cards[0].children[1].click();
+  assert.equal(all['aria-pressed'], 'false');
+  assert.equal(r.cards[0].children[1]['aria-pressed'], 'true');
+  startLevel.click();
+  assert.equal(game.practiceSet, 'level');
+  assert.equal(game.level, 2);
+  assert.equal(startLevel.listenerCount('click'), 1);
+});
+
+test('Treino por nível mostra ambos os botões e escolha direta apenas das letras disponíveis', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const ui = new r.UI(new r.LibrasEngine(), game, new r.ForcaGame());
+  const prev = r.elements.get('#prev-practice-btn');
+  const next = r.elements.get('#next-practice-btn');
+  const jump = r.elements.get('#practice-jump');
+  const select = r.elements.get('#practice-letter-select');
+  for (const level of [1, 2, 3]) {
+    if (game.mode) ui.exitToHome();
+    r.cards[0].children[level - 1].click();
+    r.cards[0].click();
+    const available = r.data.LETTER_POOL.filter((letter) => r.data.LETTERS[letter].difficulty <= level);
+    assert.equal(game.level, level);
+    assert.equal(prev.classList.contains('hidden'), false);
+    assert.equal(next.classList.contains('hidden'), false);
+    assert.equal(jump.classList.contains('hidden'), false);
+    assert.equal((select.innerHTML.match(/<option /g) || []).length, available.length);
+    const first = game.target;
+    next.click();
+    assert.notEqual(game.target, first);
+    prev.click();
+    assert.equal(game.target, first);
+    select.value = available.at(-1);
+    select.dispatchEvent('change');
+    assert.equal(game.target, available.at(-1));
+  }
+});
+
+test('seleção manual em nível cancela avanço antigo sem pontuar e mantém listeners únicos', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const libras = new r.LibrasEngine();
+  const ui = new r.UI(libras, game, new r.ForcaGame());
+  const next = r.elements.get('#next-practice-btn');
+  const prev = r.elements.get('#prev-practice-btn');
+  const select = r.elements.get('#practice-letter-select');
+  r.cards[0].click();
+  const first = game.target;
+  game.handleSign(first);
+  const before = { score: game.score, streak: game.streak, best: game.best };
+  next.click();
+  const second = game.target;
+  assert.equal(game._advanceId, null);
+  assert.equal(game.timeLeft, game._roundMs);
+  r.clock.advance(500);
+  assert.equal(game.target, second);
+  prev.click();
+  assert.equal(game.target, first);
+  select.value = 'B';
+  select.dispatchEvent('change');
+  assert.equal(game.target, 'B');
+  assert.deepEqual({ score: game.score, streak: game.streak, best: game.best }, before);
+  assert.equal(next.listenerCount('click'), 1);
+  assert.equal(prev.listenerCount('click'), 1);
+  assert.equal(select.listenerCount('change'), 1);
+  ui.exitToHome();
+  assert.equal(prev.classList.contains('hidden'), true);
+  assert.equal(next.classList.contains('hidden'), true);
 });
 
 test('real UI ignores confirmed signs in the menu and returns cleanly from each game', async () => {

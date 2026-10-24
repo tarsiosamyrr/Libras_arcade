@@ -33,6 +33,13 @@ export class UI {
     this.targetCard = $('#target-card');
     this.targetEyebrow = $('#target-eyebrow');
     this.targetLetterEl = $('#target-letter');
+    this.practiceAllBtn = $('#practice-all-btn');
+    this.practiceStartBtn = $('#practice-start-btn');
+    this.practiceNav = $('#practice-nav');
+    this.prevPracticeBtn = $('#prev-practice-btn');
+    this.nextPracticeBtn = $('#next-practice-btn');
+    this.practiceJump = $('#practice-jump');
+    this.practiceLetterSelect = $('#practice-letter-select');
     this.targetWordEl = $('#target-word');
     this.schematicHand = $('#schematic-hand');
     this.targetTip = $('#target-tip');
@@ -70,6 +77,9 @@ export class UI {
     this.currentScreen = 'home';
     this._exitingManually = false;
     this.pendingLevels = { practice: 1, word: 1, forca: 1 };
+    this.practiceLevelDots = [...document.querySelectorAll('.mode-card')]
+      .find((card) => card.dataset.mode === 'practice')?.querySelectorAll('.level-dot') || [];
+    this._practiceSelectKey = null;
 
     // Cache de controle de renderização (evita gargalo de layout no DOM)
     this._cacheFps = null;
@@ -235,7 +245,12 @@ export class UI {
   /* =============================================================== jogo */
   _bindGameEvents() {
     this.game.addEventListener('start', (e) => this._onRoundUpdate(e.detail));
-    this.game.addEventListener('newtarget', (e) => { this.libras.resetHold(); this._renderTarget(e.detail); this._renderHud(e.detail); });
+    this.game.addEventListener('newtarget', (e) => {
+      this.libras.resetHold();
+      this._renderTarget(e.detail);
+      this._renderHud(e.detail);
+      this._renderTimer(1);
+    });
     this.game.addEventListener('correct', (e) => {
       if (e.detail.mode === 'word') this._renderTarget(e.detail);
       this._flashCard('is-correct');
@@ -344,12 +359,19 @@ export class UI {
 
   _renderTarget(detail) {
     if (this.targetCard) this.targetCard.classList.remove('is-correct', 'is-wrong');
+    this._syncPracticeControls(detail.mode, detail.practiceSet);
     if (detail.mode === 'practice') {
-      if (this.targetEyebrow) this.targetEyebrow.textContent = `TREINO · NÍVEL ${detail.level} · RODADA ${detail.round}`;
+      if (this.targetEyebrow) {
+        this.targetEyebrow.textContent = detail.practiceSet === 'all'
+          ? `TREINO · A–Z · ${detail.practicePosition} DE ${detail.practiceCount}`
+          : `TREINO · NÍVEL ${detail.level} · RODADA ${detail.round}`;
+      }
       if (this.targetLetterEl) {
         this.targetLetterEl.classList.remove('hidden');
         this.targetLetterEl.textContent = detail.target;
       }
+      this._syncPracticeLetters(detail);
+      if (this.practiceLetterSelect) this.practiceLetterSelect.value = detail.target;
       if (this.targetWordEl) this.targetWordEl.classList.add('hidden');
       this._renderSchematic(detail.target);
       if (this.targetTip) this.targetTip.textContent = LETTERS[detail.target]?.tip || '';
@@ -368,6 +390,37 @@ export class UI {
       this._renderSchematic(current);
       if (this.targetTip) this.targetTip.textContent = LETTERS[current]?.tip || '';
     }
+  }
+
+  /** Atualiza as opções somente quando muda o conjunto ou o nível pedagógico. */
+  _syncPracticeLetters(detail) {
+    if (!this.practiceLetterSelect) return;
+    const key = `${detail.practiceSet}:${detail.level}`;
+    if (key === this._practiceSelectKey) return;
+    const letters = detail.practiceSet === 'all'
+      ? LETTER_POOL
+      : LETTER_POOL.filter((letter) => LETTERS[letter].difficulty <= detail.level);
+    this.practiceLetterSelect.innerHTML = letters.map((letter) =>
+      `<option value="${letter}">${letter}</option>`).join('');
+    this._practiceSelectKey = key;
+  }
+
+  /** Mantém navegação visível em toda sessão ativa do Treino. */
+  _syncPracticeControls(mode = this.game.mode, practiceSet = this.game.practiceSet) {
+    const active = this.currentScreen === 'play' && mode === 'practice';
+    this.practiceNav?.classList.toggle('hidden', !active);
+    this.nextPracticeBtn?.classList.toggle('hidden', !active);
+    this.prevPracticeBtn?.classList.toggle('hidden', !active);
+    this.practiceJump?.classList.toggle('hidden', !active);
+    if (this.prevPracticeBtn) {
+      this.prevPracticeBtn.disabled = active && practiceSet === 'level' && this.game.practiceHistoryIndex < 1;
+    }
+  }
+
+  /** Uma única entrada da UI limpa candidatos/trajetórias após qualquer troca manual válida. */
+  _navigatePracticeTarget(destination) {
+    if (this.currentScreen !== 'play' || this.game.mode !== 'practice') return;
+    if (this.game.navigatePracticeTarget(destination)) this.libras.resetTracking();
   }
 
   _renderSchematic(letter) {
@@ -439,6 +492,7 @@ export class UI {
     if (this.forcaPlayEl) this.forcaPlayEl.classList.toggle('is-open', name === 'forca-play');
     if (this.resultsEl) this.resultsEl.classList.toggle('is-open', name === 'results');
     if (this.exitBtn) this.exitBtn.classList.toggle('hidden', name !== 'play' && name !== 'forca-play');
+    this._syncPracticeControls();
     if (this.hintEl) {
       this.hintEl.textContent = name === 'play'
         ? 'Segure o sinal correto até a barra circular completar'
@@ -448,12 +502,26 @@ export class UI {
     }
   }
 
-  startMode(mode) {
+  startMode(mode, practiceSelection = null) {
     if (this.currentScreen === 'play' || this.currentScreen === 'forca-play') this.exitToHome();
-    const level = this.pendingLevels[mode] || 1;
+    if (mode === 'practice') this._setPracticeChoice(practiceSelection === 'all');
+    const level = mode === 'practice' && practiceSelection === 'all'
+      ? 'all'
+      : this.pendingLevels[mode] || 1;
     if (mode === 'practice') this.game.startPractice(level);
     else if (mode === 'word') this.game.startWord(level);
     else if (mode === 'forca') this.forca.start(level);
+  }
+
+  /** Expõe a seleção no botão e nos níveis, inclusive para leitores de tela. */
+  _setPracticeChoice(allSelected) {
+    this.practiceAllBtn?.classList.toggle('is-selected', allSelected);
+    this.practiceAllBtn?.setAttribute('aria-pressed', String(allSelected));
+    this.practiceLevelDots.forEach((dot) => {
+      const selected = !allSelected && Number(dot.dataset.level) === this.pendingLevels.practice;
+      dot.classList.toggle('is-active', selected);
+      dot.setAttribute('aria-pressed', String(selected));
+    });
   }
 
   /** A saída manual suprime a tela de resultados emitida por sessionend.
@@ -547,17 +615,21 @@ export class UI {
     // Seleção de modos e níveis
     document.querySelectorAll('.mode-card').forEach((card) => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.level-dot')) return;
+        if (e.target.closest('.level-dot') || e.target.closest('.practice-all-option') ||
+            e.target.closest('.practice-level-start')) return;
         this.startMode(card.dataset.mode);
       });
       card.querySelectorAll('.level-dot').forEach((dot) => {
         dot.addEventListener('click', () => {
           const mode = card.dataset.mode;
           this.pendingLevels[mode] = Number(dot.dataset.level);
-          card.querySelectorAll('.level-dot').forEach((d) => d.classList.toggle('is-active', d === dot));
+          if (mode === 'practice') this._setPracticeChoice(false);
+          else card.querySelectorAll('.level-dot').forEach((d) => d.classList.toggle('is-active', d === dot));
         });
       });
     });
+    this.practiceAllBtn?.addEventListener('click', () => this.startMode('practice', 'all'));
+    this.practiceStartBtn?.addEventListener('click', () => this.startMode('practice'));
 
     // Botões do Guia do Alfabeto
     $('#help-btn')?.addEventListener('click', () => this.toggleReference(true));
@@ -566,6 +638,12 @@ export class UI {
 
     // Botão Sair da rodada
     $('#exit-btn')?.addEventListener('click', () => this.exitToHome());
+
+    // Botões e seletor compartilham o mesmo fluxo seguro de mudança de alvo.
+    this.nextPracticeBtn?.addEventListener('click', () => this._navigatePracticeTarget(1));
+    this.prevPracticeBtn?.addEventListener('click', () => this._navigatePracticeTarget(-1));
+    this.practiceLetterSelect?.addEventListener('change', () =>
+      this._navigatePracticeTarget(this.practiceLetterSelect.value));
 
     // Botões da tela de Resultados
     $('#results-restart')?.addEventListener('click', () => this._showScreen('home'));

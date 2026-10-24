@@ -266,7 +266,9 @@ async function browserRuntime({ cameraRequests = [], modelFactory, storage } = {
     'boot-status', 'boot-log', 'boot-screen', 'stage', 'error-screen', 'error-message',
     'retry-camera-btn', 'webcam', 'overlay', 'home', 'play', 'forca-play', 'reference',
     'results', 'diag', 'diag-json', 'cursor', 'hint-text', 'exit-btn', 'feedback-toast',
-    'target-card', 'target-eyebrow', 'target-letter', 'target-word', 'schematic-hand',
+    'target-card', 'target-eyebrow', 'target-letter', 'next-practice-btn', 'prev-practice-btn',
+    'practice-nav', 'practice-jump', 'practice-letter-select', 'practice-all-btn', 'practice-start-btn',
+    'target-word', 'schematic-hand',
     'target-tip', 'hold-fill', 'hold-label', 'timer-fill', 'forca-card', 'forca-eyebrow',
     'forca-hint', 'forca-word', 'forca-tip', 'forca-hold-fill', 'forca-hold-label',
     'forca-keyboard', 'forca-errors-count', 'hands-status', 'hand-left-state',
@@ -278,8 +280,15 @@ async function browserRuntime({ cameraRequests = [], modelFactory, storage } = {
     'home-rankings-btn', 'rankings-close', 'player-modal', 'player-name-input',
     'player-modal-start', 'hud-player', 'tel-fps', 'tel-hands'
   ];
-  for (const id of idElements) elements.set(`#${id}`, new FakeElement({ id }));
-  for (const id of ['boot-core', 'boot-log', 'stage', 'error-screen', 'exit-btn']) {
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const htmlIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+  for (const id of idElements) {
+    // O DOM simulado precisa corresponder ao HTML entregue, senão um ID removido passa despercebido.
+    if (!htmlIds.has(id)) throw new Error(`Elemento ausente no index.html: ${id}`);
+    elements.set(`#${id}`, new FakeElement({ id }));
+  }
+  for (const id of ['boot-core', 'boot-log', 'stage', 'error-screen', 'exit-btn',
+    'next-practice-btn', 'prev-practice-btn', 'practice-nav', 'practice-jump']) {
     elements.get(`#${id}`).classList.add('hidden');
   }
   const video = elements.get('#webcam');
@@ -295,8 +304,15 @@ async function browserRuntime({ cameraRequests = [], modelFactory, storage } = {
     }
     return card;
   });
+  const practiceAllBtn = elements.get('#practice-all-btn');
+  practiceAllBtn.classList.add('practice-all-option');
+  cards[0].add(practiceAllBtn);
+  const practiceStartBtn = elements.get('#practice-start-btn');
+  practiceStartBtn.classList.add('practice-level-start');
+  cards[0].add(practiceStartBtn);
   const lookup = (selector) => {
     if (selector.startsWith('#')) {
+      if (!htmlIds.has(selector.slice(1))) return null;
       if (!elements.has(selector)) elements.set(selector, new FakeElement({ id: selector.slice(1) }));
       return elements.get(selector);
     }
@@ -460,6 +476,7 @@ async function browserRuntime({ cameraRequests = [], modelFactory, storage } = {
   return {
     app: appModule.namespace,
     UI: namespace('ui.js').UI,
+    data: namespace('data.js'),
     Game: namespace('game.js').Game,
     ForcaGame: namespace('forca.js').ForcaGame,
     LibrasEngine: namespace('libras.js').LibrasEngine,

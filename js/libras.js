@@ -104,14 +104,22 @@ export const CONFIG = {
   MOTION_MIN_SPAN: 0.26,           // deslocamento mínimo p/ contar como movimento de verdade
   MOTION_INTENT_WINDOW_MS: 400,    // janela recente para distinguir deslocamento dirigido de tremor acumulado
   MOTION_INTENT_MIN_SPAN: 0.06,    // deslocamento líquido recente que suspende o hold da pose-base
+  MOTION_INTENT_MIN_VERTICAL: 0.04, // progressão vertical recente para separar desenho de vai-e-vem lateral
   MOTION_INTENT_GRACE_MS: 300,     // espera curta por continuação antes de devolver a pose ao hold estático
   MOTION_REARM_STILL_MS: 250,      // pausa observável da ponta antes de outro J/Z após sinal dinâmico
   MOTION_REARM_STILL_SPAN: 0.04,   // raio normalizado da ponta durante essa pausa
   MOTION_ANCHOR_STILL_SPAN: 0.03,  // ignora amostras estacionárias anteriores ao início do trajeto
   J_TURN_ANGLE_ON: 35,             // graus de curva mínima no trajeto p/ reconhecer o gancho do J
   J_CURVINESS_ON: 1.15,            // trajeto/deslocamento-reto mínimo p/ considerar "curvo"
+  J_MIN_VERTICAL_NET: 0.10,       // avanço vertical líquido mínimo do gancho, na escala da mão
+  J_MIN_VERTICAL_CONSISTENCY: 0.65, // parte do percurso vertical na direção dominante
   Z_DIRECTION_FLIPS_ON: 2,         // nº mínimo de inversões horizontais p/ reconhecer o zigue-zague do Z
   Z_MIN_STEP_RATIO: 0.22,          // fração do deslocamento mínimo usada como "passo" pra contar uma inversão de direção
+  Z_MIN_LEG_SPAN: 0.08,           // cada traço deve cobrir mais que um passo isolado de detecção
+  Z_MIN_MIDDLE_VERTICAL: 0.04,    // traço diagonal intermediário deve progredir verticalmente
+  Z_MIN_TOTAL_VERTICAL: 0.10,     // separação vertical entre início e fim do desenho
+  Z_MIN_VERTICAL_CONSISTENCY: 0.75, // rejeita oscilação vertical repetitiva
+  Z_MIN_DURATION_MS: 300,        // tempo mínimo para observar três traços distintos
 
   // --- DUAS MÃOS: mão esquerda como "portão" de confirmação ---
   // O portão existe no motor, mas vision.js detecta uma mão e sempre retorna
@@ -612,6 +620,52 @@ function horizontalDirectionFlips(pts, minStep) {
   return flips;
 }
 
+/** Fração do percurso vertical no sentido dominante; 0,5 indica vai-e-vem simétrico. */
+function verticalDirectionConsistency(pts) {
+  let positive = 0, negative = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dy = pts[i].y - pts[i - 1].y;
+    if (dy > 0) positive += dy;
+    else negative -= dy;
+  }
+  const total = positive + negative;
+  return total > 0 ? Math.max(positive, negative) / total : 0;
+}
+
+/** Exige três traços alternados, com a descida/subida do meio no sentido da progressão total. */
+function hasZStrokePattern(pts, minStep) {
+  let previousStart = -1, previousEnd = -1;
+  let firstStart = -1, firstEnd = -1;
+  let start = 0, direction = 0;
+  let flips = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i - 1].x;
+    if (Math.abs(dx) < minStep) continue;
+    const nextDirection = Math.sign(dx);
+    if (direction && nextDirection !== direction) {
+      firstStart = previousStart;
+      firstEnd = previousEnd;
+      previousStart = start;
+      previousEnd = i - 1;
+      start = i - 1;
+      flips++;
+    }
+    direction = nextDirection;
+  }
+  if (flips < CONFIG.Z_DIRECTION_FLIPS_ON || firstStart < 0) return false;
+  const end = pts.length - 1;
+  if (Math.abs(pts[firstEnd].x - pts[firstStart].x) < CONFIG.Z_MIN_LEG_SPAN ||
+      Math.abs(pts[previousEnd].x - pts[previousStart].x) < CONFIG.Z_MIN_LEG_SPAN ||
+      Math.abs(pts[end].x - pts[start].x) < CONFIG.Z_MIN_LEG_SPAN) return false;
+  const middleVertical = pts[previousEnd].y - pts[previousStart].y;
+  const totalVertical = pts[end].y - pts[firstStart].y;
+  return Math.abs(middleVertical) >= CONFIG.Z_MIN_MIDDLE_VERTICAL &&
+    Math.abs(totalVertical) >= CONFIG.Z_MIN_TOTAL_VERTICAL &&
+    Math.sign(middleVertical) === Math.sign(totalVertical) &&
+    pts[end].t - pts[firstStart].t >= CONFIG.Z_MIN_DURATION_MS &&
+    verticalDirectionConsistency(pts) >= CONFIG.Z_MIN_VERTICAL_CONSISTENCY;
+}
+
 export class LibrasEngine extends EventTarget {
   constructor() {
     super();
@@ -649,6 +703,10 @@ export class LibrasEngine extends EventTarget {
     this._motionRearmStart = null;
     this._motionRearmX = 0;
     this._motionRearmY = 0;
+    this._motionRejectedKey = null;
+    this._motionRejectStart = null;
+    this._motionRejectX = 0;
+    this._motionRejectY = 0;
 
     // buffer do gesto de navegação (deslizar a mão da esquerda pra direita)
     this._navBuffer = [];
@@ -898,6 +956,24 @@ export class LibrasEngine extends EventTarget {
     const indexBase = !pinkyBase && isIndexUpBase(f);
     const activeKey = pinkyBase ? 'J' : (indexBase ? 'Z' : null);
 
+    // Após um vai-e-vem incompatível com J/Z, a pose estática pode completar
+    // o hold. Uma pausa observável da ponta libera uma nova tentativa dinâmica.
+    if (this._motionRejectedKey && this._motionRejectedKey !== activeKey) this._resetMotion();
+    if (activeKey && this._motionRejectedKey === activeKey) {
+      const rejectedTip = lm[activeKey === 'J' ? LM.PINKY_TIP : LM.INDEX_TIP];
+      const x = rejectedTip.x / scale, y = rejectedTip.y / scale;
+      if (this._motionRejectStart === null ||
+          Math.hypot(x - this._motionRejectX, y - this._motionRejectY) > CONFIG.MOTION_REARM_STILL_SPAN) {
+        this._motionRejectStart = nowMs;
+        this._motionRejectX = x;
+        this._motionRejectY = y;
+        return null;
+      }
+      if (nowMs - this._motionRejectStart < CONFIG.MOTION_REARM_STILL_MS) return null;
+      this._motionRejectedKey = null;
+      this._motionRejectStart = null;
+    }
+
     if (activeKey) {
       this._motionLastBaseAt = nowMs;
     } else if (this._motionKey && nowMs - (this._motionLastBaseAt ?? 0) > CONFIG.MOTION_BASE_GRACE_MS) {
@@ -943,13 +1019,28 @@ export class LibrasEngine extends EventTarget {
     let recentStart = smoothed.length - 1;
     while (recentStart > 0 && last.t - smoothed[recentStart - 1].t <= CONFIG.MOTION_INTENT_WINDOW_MS) recentStart--;
     if (smoothed.length >= CONFIG.MOTION_SMOOTH_WINDOW &&
-        Math.hypot(last.x - smoothed[recentStart].x, last.y - smoothed[recentStart].y) >= CONFIG.MOTION_INTENT_MIN_SPAN) {
+        Math.hypot(last.x - smoothed[recentStart].x, last.y - smoothed[recentStart].y) >= CONFIG.MOTION_INTENT_MIN_SPAN &&
+        Math.abs(last.y - smoothed[recentStart].y) >= CONFIG.MOTION_INTENT_MIN_VERTICAL) {
       this._motionLastIntentAt = nowMs;
     }
     this._motionInProgress = this._motionLastIntentAt !== null &&
       nowMs - this._motionLastIntentAt <= CONFIG.MOTION_INTENT_GRACE_MS;
     if (this._motionLastIntentAt !== null && !this._motionInProgress) {
       this._resetMotion();
+      return null;
+    }
+
+    // Duas inversões sem avanço vertical coerente caracterizam oscilação, não
+    // preparação indefinida. Não reutilizar essas amostras numa tentativa nova.
+    if (this._motionInProgress &&
+        horizontalDirectionFlips(smoothed, CONFIG.MOTION_MIN_SPAN * CONFIG.Z_MIN_STEP_RATIO) >= CONFIG.Z_DIRECTION_FLIPS_ON &&
+        Math.abs(last.y - smoothed[0].y) < CONFIG.J_MIN_VERTICAL_NET &&
+        verticalDirectionConsistency(smoothed) < CONFIG.J_MIN_VERTICAL_CONSISTENCY) {
+      this._resetMotion();
+      this._motionRejectedKey = key;
+      this._motionRejectStart = nowMs;
+      this._motionRejectX = tip.x / scale;
+      this._motionRejectY = tip.y / scale;
       return null;
     }
 
@@ -968,15 +1059,16 @@ export class LibrasEngine extends EventTarget {
       const turn = turnAngleDeg(smoothed);
       const straight = Math.max(netDisplacement(smoothed), 1e-4);
       const curviness = traveled / straight;
-      if (turn >= CONFIG.J_TURN_ANGLE_ON && curviness >= CONFIG.J_CURVINESS_ON) {
+      if (turn >= CONFIG.J_TURN_ANGLE_ON && curviness >= CONFIG.J_CURVINESS_ON &&
+          Math.abs(last.y - smoothed[0].y) >= CONFIG.J_MIN_VERTICAL_NET &&
+          verticalDirectionConsistency(smoothed) >= CONFIG.J_MIN_VERTICAL_CONSISTENCY) {
         this.state.holdProgress = 1;
         this._resetMotion();
         return 'J';
       }
     } else {
       const minStep = CONFIG.MOTION_MIN_SPAN * CONFIG.Z_MIN_STEP_RATIO;
-      const flips = horizontalDirectionFlips(smoothed, minStep);
-      if (flips >= CONFIG.Z_DIRECTION_FLIPS_ON) {
+      if (hasZStrokePattern(smoothed, minStep)) {
         this.state.holdProgress = 1;
         this._resetMotion();
         return 'Z';
@@ -991,6 +1083,8 @@ export class LibrasEngine extends EventTarget {
     this._motionLastBaseAt = null;
     this._motionInProgress = false;
     this._motionLastIntentAt = null;
+    this._motionRejectedKey = null;
+    this._motionRejectStart = null;
   }
 
   /** Rastreia o pulso de qualquer mão detectada em busca do gesto de
