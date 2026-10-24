@@ -1,6 +1,6 @@
 # Sistema implementado
 
-**Última inspeção:** 24/10/2026. **Referência:** FASE 03.3B-1 no worktree `feat/fase-03-cooldown`, sem integração automática.
+**Última inspeção:** 24/10/2026. **Referência:** FASE 03.3B-1.2 no worktree `feat/fase-03-cooldown`, sem integração automática.
 
 ## Unidade executável e dependências
 
@@ -49,6 +49,8 @@ Na FASE 03.1.2, priorizar movimento também requer avanço vertical recente de 0
 
 Na FASE 03.3B-1, J também exige no trajeto suavizado um segmento de três passos descendentes consecutivos, cada um com deriva lateral no máximo 0,25 da descida. A busca percorre o buffer limitado existente; não exige que as primeiras amostras já sejam de movimento. Um intervalo sem callback superior à graça existente de 300 ms descarta a trajetória antes de processar uma pose-base retomada. Não mudaram o hold, o cooldown, a regra estática I/Y nem Z. Uma haste curta ou muito inclinada pode ser rejeitada; os limiares não foram validados com webcam. A e O podem pontuar ambos 1,00, e a ordem de `RULES` entrega A em empate; nenhuma regra O/A foi alterada. [Diagnóstico e decisão](changes/2026-10-24-fase-033b1-j-oa.md).
 
+Na FASE 03.3B-1.2, três passos de haste continuam necessários, mas a trajetória J também precisa atingir um ponto inferior e retornar ao menos 0,03 na vertical e 0,06 lateralmente depois dele. Isso rejeita a haste seguida só de desvio lateral reproduzida sinteticamente; os outros critérios de curva e consistência continuam. O percurso existente é analisado sem novo buffer ou timer. A condição pode perder um J real com retorno pouco visível. [Decisão da fase](changes/2026-10-24-fase-033b12-j-calibracao.md).
+
 | Emissor | Eventos e consumidores |
 | --- | --- |
 | `LibrasEngine` | `frame` contém referência mutável a `state`; `signconfirmed` traz `{ letter }`; `navback` solicita navegação. UI consome todos. |
@@ -64,6 +66,8 @@ Na FASE 03.3B-1, J também exige no trajeto suavizado um segmento de três passo
 O registro circular mantém no máximo **120 eventos**; uma observação `recognition` entra a cada **200 ms** ou mudança de candidata, fase ou razão. A classificação calcula o segundo melhor escore somente com captura ligada. A UI serializa os oito eventos mais recentes no painel a cada 200 ms quando ele está aberto. `mode`/`screen` vêm da navegação, sem consulta DOM por frame. `disable()` apaga os eventos. CPU/RAM reais não foram medidos; com diagnóstico desligado, não há validação estrutural extra, cálculo da segunda candidata nem serialização do painel.
 
 `recognition` descreve presença/validade da mão, primeira e segunda candidatas estáticas, elegibilidade pelo limiar, escores e diferença (`gap`), `phase`, `stabilizingMs`, `cooldownRemainingMs`, `motionLetter`, amostras, progresso e `motionStatus`. `hold_reset` identifica troca/perda da candidata ou suspensão por movimento; `motion_rejected` identifica trajetória incompleta ou incoerente. `signconfirmed` é registrado imediatamente antes da emissão síncrona do evento. A UI registra `ui_received`, depois `game_decision` com `expected`, índice, rodada e razão devolvida pelo motor; `ui_target` comprova passagem pelo renderizador. `round_start`, `game_timeout`, `screen_change`, `tracking_reset`, `app_pause` e `app_resume` ajudam a localizar trocas de sessão. O escore não é probabilidade; `gap = 0` mostra empate, sem impor limiar de margem. `below_threshold` refere-se a `MIN_SCORE = 0,55`, enquanto `cooldown`, `wait_release`, `residual_base` e `motion_in_progress` explicam bloqueios temporais. Nenhuma confirmação é reenviada pelo diagnóstico.
+
+A calibração da 03.3B-1.2 exige `startCalibration()` com intenção, mão física, orientação, distância e espelhamento informados pelo avaliador. Cada início limpa o anel e rotula uma tentativa; `stopCalibration()` para a captura e deixa a leitura em memória, enquanto `disable()` apaga. Somente nessa modalidade, `recognition` recebe features geométricas escalares e escores de regras concorrentes já calculados em `classify()`. `motion_geometry` amostra métricas escalares de J com 200 ms de espaçamento ou no instante de validação do trajeto. `signconfirmed.elapsedMs` conta desde o início manual. Não há handedness inferido, exportação automática ou persistência de dados biométricos; o anel segue limitado a 120 eventos. A captura pode deslocar eventos mais antigos do anel durante uma tentativa longa. Seu custo real não foi medido.
 
 `Game.handleSign()` mantém os mesmos eventos e agora devolve `accepted`, `wrong_letter`, `no_session`, `paused` ou `round_transition`; este último ocorre no atraso de 450 ms após palavra completa ou timeout. `ForcaGame.handleGuess()` devolve também `repeated_letter`. A UI rejeita `signconfirmed` fora das telas de jogo com `inactive_screen`. No Soletrar, `wordcomplete` passou a chamar `_renderTarget()` para marcar a última letra concluída antes da próxima palavra; o caractere final continua sendo a referência esquemática durante o atraso. O cronômetro por letra segue ativo durante cooldown, sem mudança de duração.
 

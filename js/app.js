@@ -15,7 +15,9 @@ window.librasArcadeDiagnostics = Object.freeze({
   enable: () => diagnostics.enable(),
   disable: () => diagnostics.disable(),
   clear: () => diagnostics.clear(),
-  read: () => diagnostics.read()
+  read: () => diagnostics.read(),
+  startCalibration: (labels) => diagnostics.startCalibration(labels),
+  stopCalibration: () => diagnostics.stopCalibration()
 });
 
 const bootGate = document.getElementById('boot-gate');

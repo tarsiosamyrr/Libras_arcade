@@ -114,6 +114,8 @@ export const CONFIG = {
   J_CURVINESS_ON: 1.15,            // trajeto/deslocamento-reto mínimo p/ considerar "curvo"
   J_STEM_MIN_STEPS: 3,            // passos consecutivos de descida na trajetória
   J_STEM_MAX_LATERAL_RATIO: 0.25, // deriva lateral máxima da haste em relação à descida
+  J_HOOK_MIN_RISE: 0.03,          // retorno na fronteira do raio de pose estacionária
+  J_HOOK_MIN_SIDE: 0.06,          // avanço lateral do retorno; mesmos pisos da intenção dinâmica
   J_MIN_VERTICAL_NET: 0.10,       // avanço vertical líquido mínimo do gancho, na escala da mão
   J_MIN_VERTICAL_CONSISTENCY: 0.65, // parte do percurso vertical na direção dominante
   Z_DIRECTION_FLIPS_ON: 2,         // nº mínimo de inversões horizontais p/ reconhecer o zigue-zague do Z
@@ -530,6 +532,15 @@ const RULES = {
   }
 };
 
+// Apenas durante calibração voluntária: concorrentes dos grupos em análise.
+const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'F', 'G', 'I', 'K', 'O', 'P', 'T', 'V', 'Y']);
+const CALIBRATION_FEATURES = [
+  'extIndex', 'extMiddle', 'extRing', 'extPinky',
+  'curlIndex', 'curlMiddle', 'curlRing', 'curlPinky',
+  'thumbOut', 'thumbAcross', 'thumbIndexPinch', 'thumbMiddlePinch',
+  'thumbBetweenIM', 'thumbIndexAngle', 'spreadIM', 'pointAngleIndex', 'pointAngleIM'
+];
+
 // letras reconhecidas por FORMA ESTÁTICA (um frame só)
 export const STATIC_LETTERS = Object.keys(RULES);
 // letras reconhecidas por TRAJETÓRIA DE MOVIMENTO (ver LibrasEngine._trackMotionSigns)
@@ -552,13 +563,15 @@ function isOpenHand(f) {
   return openness >= CONFIG.LEFT_HAND_OPEN_MIN;
 }
 
-function classify(features, includeRunnerUp = false) {
+function classify(features, includeRunnerUp = false, includeCalibration = false) {
   let best = null;
   let bestScore = 0;
   let second = null;
   let secondScore = 0;
+  const calibrationScores = includeCalibration ? {} : null;
   for (const letter of STATIC_LETTERS) {
     const score = RULES[letter](features);
+    if (calibrationScores && CALIBRATION_RULES.has(letter)) calibrationScores[`score${letter}`] = score;
     if (score > bestScore) {
       if (includeRunnerUp) { second = best; secondScore = bestScore; }
       bestScore = score;
@@ -568,9 +581,11 @@ function classify(features, includeRunnerUp = false) {
       secondScore = score;
     }
   }
-  return includeRunnerUp
+  const ranking = includeRunnerUp
     ? { letter: best, score: bestScore, second, secondScore }
     : { letter: best, score: bestScore };
+  if (calibrationScores) ranking.calibrationScores = calibrationScores;
+  return ranking;
 }
 
 /* --------------------------------------------- GESTOS COM MOVIMENTO (J, Z) --- */
@@ -646,17 +661,31 @@ function verticalDirectionConsistency(pts) {
   return total > 0 ? Math.max(positive, negative) / total : 0;
 }
 
-/** Procura a haste descendente do J sem depender da pose parada antes do trajeto. */
-function hasJStem(pts) {
+/** Exige haste e retorno lateral ascendente nessa ordem, ignorando a pose parada inicial. */
+function hasJStemAndHook(pts, metrics = null) {
   let steps = 0;
+  let stemEnd = -1;
   for (let i = 1; i < pts.length; i++) {
     const dx = pts[i].x - pts[i - 1].x;
     const dy = pts[i].y - pts[i - 1].y;
     steps = dy > 0 && Math.abs(dx) <= dy * CONFIG.J_STEM_MAX_LATERAL_RATIO
       ? steps + 1 : 0;
-    if (steps >= CONFIG.J_STEM_MIN_STEPS) return true;
+    if (steps >= CONFIG.J_STEM_MIN_STEPS) { stemEnd = i; break; }
   }
-  return false;
+  if (stemEnd < 0) {
+    if (metrics) { metrics.stemDescent = 0; metrics.hookRise = 0; metrics.hookSide = 0; }
+    return false;
+  }
+  if (metrics) metrics.stemDescent = pts[stemEnd].y - pts[stemEnd - CONFIG.J_STEM_MIN_STEPS].y;
+  let trough = stemEnd;
+  for (let i = stemEnd + 1; i < pts.length; i++) {
+    if (pts[i].y > pts[trough].y) trough = i;
+  }
+  const last = pts[pts.length - 1];
+  const hookRise = pts[trough].y - last.y;
+  const hookSide = Math.abs(last.x - pts[trough].x);
+  if (metrics) { metrics.hookRise = Math.max(0, hookRise); metrics.hookSide = hookSide; }
+  return hookRise >= CONFIG.J_HOOK_MIN_RISE && hookSide >= CONFIG.J_HOOK_MIN_SIDE;
 }
 
 /** Exige três traços alternados, com a descida/subida do meio no sentido da progressão total. */
@@ -795,7 +824,7 @@ export class LibrasEngine extends EventTarget {
     const rightLm = right.landmarks;
     const scale = handScale(rightLm);
     const features = extractFeatures(rightLm);
-    const ranking = classify(features, diagnostics.enabled);
+    const ranking = classify(features, diagnostics.enabled, diagnostics.calibrationActive);
     const { letter, score } = ranking;
 
     this.state.features = features;
@@ -852,7 +881,7 @@ export class LibrasEngine extends EventTarget {
                 motionStatus === 'in_progress' ? 'motion_in_progress' :
                   (ranking?.score ?? 0) < CONFIG.MIN_SCORE ? 'below_threshold' :
                     phase === 'STABILIZING' ? 'stabilizing' : 'ready';
-    diagnostics.observe({
+    const sample = {
       handPresent, landmarksValid, candidate: ranking?.letter ?? null,
       candidateEligible: (ranking?.score ?? 0) >= CONFIG.MIN_SCORE,
       score: ranking?.score ?? 0, second: ranking?.second ?? null,
@@ -863,7 +892,12 @@ export class LibrasEngine extends EventTarget {
         Math.max(0, CONFIG.CONFIRM_COOLDOWN_MS - (nowMs - this._confirmedAt)),
       motionLetter: this._motionKey, motionSamples: this._motionBuffer.length,
       motionProgress: this._motionProgress, motionStatus, reason
-    }, nowMs);
+    };
+    if (diagnostics.calibrationActive && handPresent && this.state.features) {
+      for (const name of CALIBRATION_FEATURES) sample[name] = this.state.features[name];
+      Object.assign(sample, ranking.calibrationScores);
+    }
+    diagnostics.observe(sample, nowMs);
   }
 
   /** Zera somente a sustentação estática; trajetórias e navegação têm buffers próprios. */
@@ -1147,11 +1181,22 @@ export class LibrasEngine extends EventTarget {
       const turn = turnAngleDeg(smoothed);
       const straight = Math.max(netDisplacement(smoothed), 1e-4);
       const curviness = traveled / straight;
-      // Curvatura sozinha aceita um arco que começa pelo gancho. A haste deve
-      // existir mesmo quando o buffer inclui a pose de preparação anterior.
-      if (hasJStem(smoothed) && turn >= CONFIG.J_TURN_ANGLE_ON && curviness >= CONFIG.J_CURVINESS_ON &&
-          Math.abs(last.y - smoothed[0].y) >= CONFIG.J_MIN_VERTICAL_NET &&
-          verticalDirectionConsistency(smoothed) >= CONFIG.J_MIN_VERTICAL_CONSISTENCY) {
+      const shapeMetrics = diagnostics.calibrationActive ? {} : null;
+      const shapeValid = hasJStemAndHook(smoothed, shapeMetrics);
+      const validJ = shapeValid && turn >= CONFIG.J_TURN_ANGLE_ON &&
+        curviness >= CONFIG.J_CURVINESS_ON &&
+        Math.abs(last.y - smoothed[0].y) >= CONFIG.J_MIN_VERTICAL_NET &&
+        verticalDirectionConsistency(smoothed) >= CONFIG.J_MIN_VERTICAL_CONSISTENCY;
+      if (shapeMetrics) diagnostics.observeMotion({
+        motionLetter: 'J', stemDescent: shapeMetrics.stemDescent,
+        hookRise: shapeMetrics.hookRise, hookSide: shapeMetrics.hookSide,
+        turnDeg: turn, pathLength: traveled,
+        netVertical: last.y - smoothed[0].y, curviness,
+        motionDurationMs: last.t - smoothed[0].t, shapeValid
+      }, nowMs, validJ);
+      // Curvatura global aceita até uma haste com desvio lateral reto. Exigir
+      // retorno ascendente depois da haste sem contar a pose de preparação.
+      if (validJ) {
         this.state.holdProgress = 1;
         this._resetMotion();
         return 'J';

@@ -2,7 +2,15 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
-## Verificação atual — FASE 03.3B-1, falso J e diagnóstico O/A
+## Verificação atual — FASE 03.3B-1.2, retorno de J e coleta rotulada
+
+Em 24/10/2026, no HEAD local `67c0f39` da branch `feat/fase-03-cooldown`, `npm.cmd test` passou com **130/130** antes das alterações. Um novo teste de `LibrasEngine.update()` falhou antes da correção: haste descendente seguida somente de desvio lateral emitia J. Após exigir retorno ascendente/lateral e preservar a fixture histórica de J no mesmo instante, esse teste e os controles positivos passaram. A primeira variante da correção atrasava J em um frame no teste diferencial; o piso de subida foi alinhado à fronteira de movimento já usada pelo motor e a regressão passou. Uma fixture de hold inicialmente movia a ponta para outra posição ao cessar o traço; a fixture foi corrigida, sem mascarar o falso J reproduzido.
+
+Oito testes foram acrescentados ao harness de integração existente: traço lateral negativo, I com desvio inclinado/espelhado, I entregue ao Soletrar sem falso J, J curto em duas velocidades e espelhamentos, API rotulada com validação/limpeza/escalares seguros, geometria resumida de J, V/P/K apontados para cima/baixo e inclinados no plano da imagem, e empate A/O sob rotação/espelhamento sintéticos. Os rótulos de mão nos testes são declarados e espelhamento matemático não reproduz lateralidade física nem mudança do plano da palma. Os testes antigos preservam I imóvel e sob oscilações, J lento/rápido/irregular, I→J, J→I, residual, D/Z, Treino A–Z, três modos e recursos. Após as mudanças, `npm.cmd test` passou com **138/138**, `npm.cmd run test:camera` com **125/125** e `npm.cmd run test:performance` com **13/13**; `node --check` em `js/*.js` passou. A captura rotulada foi verificada desligada por padrão, com rótulos válidos obrigatórios, até 120 eventos em memória e sem arrays de landmarks.
+
+As fixtures não reproduzem os landmarks dos 12 buffers reais, indisponíveis neste worktree; portanto não medem redução de falso J, perda de J válido, precisão O/A ou custo de CPU/RAM com webcam. O script `test:performance` verifica contratos de inferência e buffers, não um benchmark desta mudança. O relatório de webcam registra eventos de janelas circulares, sem denominador de tentativas. [Decisão e protocolo](changes/2026-10-24-fase-033b12-j-calibracao.md).
+
+## Verificação anterior — FASE 03.3B-1, falso J e diagnóstico O/A
 
 Em 24/10/2026, a base local `bddf1a9` passou com **123/123** em `npm.cmd test`. Antes da correção, uma fixture determinística de I com curva invertida produziu `J` em vez de `I` no fluxo completo de `LibrasEngine.update()`. Outro teste novo revelou que uma trajetória J incompleta sobrevivente a mais de 300 ms sem callbacks prejudicava a trajetória seguinte. Os dois testes passaram após exigir um segmento descendente para J e descartar o buffer obsoleto, sem alterar cooldown ou hold estático.
 
