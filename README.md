@@ -72,6 +72,8 @@ J/Z usam histórico de até 1.300 ms, suavização por 3 amostras, mínimo de 6 
 
 Na FASE 03.3B-1.4.1, o J curto passou a conservar o ponto final original após suavizar os pontos anteriores. O fallback exige uma curva lateral já iniciada antes do último passo para não aceitar um salto isolado como J. A correção foi verificada com trajetórias sintéticas e ainda aguarda homologação com webcam.
 
+Na FASE 03.3B-2A, V recebe um desconto de escore apenas quando o polegar se aproxima da região entre indicador/médio **e** os dedos apontam para baixo na imagem, reduzindo a confusão sintética com P. O/A permanece sem recalibração: o empate A/O e a falha rotulada de O com a mão esquerda exigem escalares por tentativa para evitar prejudicar A verdadeiro. A calibração local opcional passou a mostrar projeção da palma, direção dos dedos, agrupamento das pontas e escores concorrentes adicionais. Nenhuma melhora de reconhecimento com webcam foi medida após essa mudança.
+
 A configuração atual detecta **uma mão** (`numHands: 1`), atribui a primeira detecção ao papel lógico `right` e mantém `REQUIRE_LEFT_HAND: false`. Não identifica lateralidade nesse caminho. O painel de duas mãos é um resquício de outra configuração; ativar só a flag da esquerda impediria confirmações.
 
 As 90 palavras cadastradas têm dicas e usam letras da cobertura nominal. A dificuldade das palavras não é filtrada pela dificuldade individual das letras; Soletrar/Forca não têm exatamente o mesmo conjunto por nível que Treino.

@@ -3,7 +3,7 @@ id: core
 contract_status: confirmed
 implementation_status: partial
 last_verified: 2026-10-25
-last_verified_ref: working-tree-fase-033b141-automated
+last_verified_ref: working-tree-fase-033b2a-automated
 ---
 
 # Prática de datilologia nos três jogos
@@ -41,10 +41,12 @@ A homologação posterior não aprovou a 03.3B-1.3: J rápido falhou, J curto os
 
 A revisão CodeRabbit da 03.3B-1.4 identificou que a média curta ainda reduzia uma subida terminal válida. A FASE 03.3B-1.4.1 conserva o último ponto bruto e exige avanço lateral no mesmo sentido também no passo anterior, para separar um gancho curto de um salto isolado. O defeito e um falso J por ruído terminal foram reproduzidos em `update()` antes da correção. A capacidade continua `partial`: as fixtures não substituem tentativas com webcam nem a nova revisão do diff.
 
+A FASE 03.3B-2A reduz V somente quando há evidência simultânea de polegar próximo à região K/P e direção descendente, após reproduzir uma P sintética que confirmava V. A captura rotulada ganhou escalares de projeção da palma, direção local dos dedos, agrupamento das pontas e escores S/E. O/A continua ambíguo em empate: os buffers reais não incluem a geometria para calibrá-lo sem risco a A. A capacidade permanece `partial`; a mudança em P/V e a instrumentação precisam de webcam rotulada, comparação por tentativa e revisão pedagógica.
+
 ## Evidências de implementação e teste
 
 Implementação: [Game](../../js/game.js), [ForcaGame](../../js/forca.js), [LibrasEngine](../../js/libras.js) e [UI](../../js/ui.js). A inspeção incluiu todos os módulos da raiz e seus dados. Comandos, cenários reproduzidos e limitações estão em [testing.md](../testing.md). `last_verified` representa inspeção do estado, não homologação do reconhecimento.
 
 ## Relações
 
-[Roadmap](../../docs/ROADMAP.md), [matriz A–Z e protocolo](../../docs/qa/qa-reconhecimento.md), [decisões abertas](../open-decisions.md), [AGENTS](../../AGENTS.md), [mudança da FASE 01](../changes/2026-10-20-performance.md), [decisão da FASE 03.1](../changes/2026-10-23-arbitragem-estatico-dinamico.md), [decisão da FASE 03.1.2](../changes/2026-10-23-fase-0312-z-i-treino.md), [decisão da FASE 03.3B-1](../changes/2026-10-24-fase-033b1-j-oa.md), [decisão da FASE 03.3B-1.2](../changes/2026-10-24-fase-033b12-j-calibracao.md), [decisão da FASE 03.3B-1.3](../changes/2026-10-24-fase-033b13-j-segmentacao.md), [decisão da FASE 03.3B-1.4](../changes/2026-10-24-fase-033b14-j-rapido-curto.md) e [decisão da FASE 03.3B-1.4.1](../changes/2026-10-25-fase-033b141-j-terminal.md). A arquitetura principal foi preservada.
+[Roadmap](../../docs/ROADMAP.md), [matriz A–Z e protocolo](../../docs/qa/qa-reconhecimento.md), [decisões abertas](../open-decisions.md), [AGENTS](../../AGENTS.md), [mudança da FASE 01](../changes/2026-10-20-performance.md), [decisão da FASE 03.1](../changes/2026-10-23-arbitragem-estatico-dinamico.md), [decisão da FASE 03.1.2](../changes/2026-10-23-fase-0312-z-i-treino.md), [decisão da FASE 03.3B-1](../changes/2026-10-24-fase-033b1-j-oa.md), [decisão da FASE 03.3B-1.2](../changes/2026-10-24-fase-033b12-j-calibracao.md), [decisão da FASE 03.3B-1.3](../changes/2026-10-24-fase-033b13-j-segmentacao.md), [decisão da FASE 03.3B-1.4](../changes/2026-10-24-fase-033b14-j-rapido-curto.md), [decisão da FASE 03.3B-1.4.1](../changes/2026-10-25-fase-033b141-j-terminal.md) e [decisão da FASE 03.3B-2A](../changes/2026-10-25-fase-033b2a-oa-pvk.md). A arquitetura principal foi preservada.

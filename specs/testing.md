@@ -2,6 +2,12 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
+## Verificação atual — FASE 03.3B-2A, O/A e P/V/K
+
+Em 25/10/2026, branch `recovery/fase-033b13-6170a2d`, HEAD inicial `690a979`, baseline `npm.cmd test` **165/165**, `test:camera` **152/152** e `test:performance` **13/13**. O relatório rotulado de 12 buffers estava presente como arquivo não rastreado; o JSON bruto e landmarks não estavam no worktree. O empate A/O em 1,00 e a vitória de V sobre P descendente foram confirmados no código e nas fixtures existentes. Um teste novo pelo `LibrasEngine.update()` falhou antes da correção: na P sintética com polegar projetado perto do limite, `scoreP=0,9105` e `scoreV=0,9377`, produzindo V. O teste da nova instrumentação também falhou antes por ausência de `scoreS`.
+
+Seis testes novos cobrem P ambíguo nos dois espelhos, P/V/K com inclinação e ruído, A/O com rotação/escala/espelho, calibração escalar, aceitação de P no Treino/Soletrar e rejeição de V incorreto seguida de P após liberação. Os testes anteriores seguem verificando J/Z/I/D/C/G, O/A, K/V, cooldown, duplicação e contratos de UI/câmera. Após a mudança: `npm.cmd test` **171/171**, `npm.cmd run test:camera` **158/158** e `npm.cmd run test:performance` **13/13**. Esses comandos não medem acerto na webcam nem custo real de CPU/RAM/FPS; a correção de P/V e a hipótese O/A permanecem sem homologação real. [Decisão e limites](changes/2026-10-25-fase-033b2a-oa-pvk.md).
+
 ## Verificação atual — FASE 03.3B-1.4.1, retorno terminal do J curto
 
 Em 25/10/2026, no HEAD inicial `22b5d04` e worktree limpo, a linha de base era 160/160. No `LibrasEngine.update()`, a trajetória curta com último Y `0,40` falhou antes da correção: a captura escalar mostrou `shortHook=true`, `hookRise≈0,0233`, `hook_rise_short` e nenhuma confirmação J. O último passo bruto subia 0,16 e avançava 0,14 na escala da fixture. Uma trajetória com subida bruta terminal de 0,05 também ficou positiva após a correção. Um negativo novo encontrou falso J **já existente** em uma haste de I com um ponto final ruidoso; outro negativo mostrou que simplesmente preservar o último ponto faria um salto terminal menos extremo virar J. Esses testes orientaram a exigência de avanço lateral no passo anterior.

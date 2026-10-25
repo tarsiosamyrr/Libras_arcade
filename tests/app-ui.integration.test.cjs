@@ -61,6 +61,43 @@ function recognitionRig(r) {
   return { engine, signs, frame, hold, path };
 }
 
+// A mão é espelhada nos landmarks; o rótulo físico não entra no classificador.
+function twoFingerCalibrationPose({ down = false, thumbY, mirror = false, angle = 0 } = {}) {
+  const wristY = down ? .2 : .8;
+  const mcpY = down ? .4 : .6;
+  const pipY = down ? .52 : .48;
+  const tipY = down ? .72 : .28;
+  const hand = Array.from({ length: 21 }, () => ({ x: .5, y: wristY, z: 0 }));
+  for (const index of [5, 9, 13, 17]) hand[index] = { x: .5, y: mcpY, z: 0 };
+  hand[5] = { x: .42, y: mcpY, z: 0 };
+  hand[6] = { x: .38, y: pipY, z: 0 };
+  hand[8] = { x: .35, y: tipY, z: 0 };
+  hand[9] = { x: .58, y: mcpY, z: 0 };
+  hand[10] = { x: .62, y: pipY, z: 0 };
+  hand[12] = { x: .65, y: tipY, z: 0 };
+  hand[4] = { x: .5, y: thumbY ?? (down ? pipY : wristY), z: 0 };
+  return hand.map((point) => {
+    const dx = point.x - .5, dy = point.y - wristY;
+    const x = .5 + dx * Math.cos(angle) - dy * Math.sin(angle);
+    const y = wristY + dx * Math.sin(angle) + dy * Math.cos(angle);
+    return { x: mirror ? 1 - x : x, y, z: 0 };
+  });
+}
+
+function oaCalibrationPose(letter, { mirror = false, angle = 0, scale = 1 } = {}) {
+  const hand = pose('A').map((point) => ({ ...point }));
+  if (letter === 'O') {
+    // Aproxima as pontas do indicador/médio e do polegar na fixture geométrica.
+    for (const index of [4, 8, 12]) hand[index] = { x: .5, y: .6, z: 0 };
+  }
+  return hand.map((point) => {
+    const dx = (point.x - .5) * scale, dy = (point.y - .8) * scale;
+    const x = .5 + dx * Math.cos(angle) - dy * Math.sin(angle);
+    const y = .8 + dx * Math.sin(angle) + dy * Math.cos(angle);
+    return { x: mirror ? 1 - x : x, y, z: point.z };
+  });
+}
+
 test('cooldown confirma gesto estático uma vez e mantém a pose prolongada bloqueada', async () => {
   const r = await browserRuntime();
   const { engine, signs, sample } = temporalRig(r);
@@ -1926,6 +1963,44 @@ test('calibração opcional exige rótulos e guarda somente escalares limitados 
   assert.equal(diag.read().events.length, 0);
 });
 
+test('calibração O/A e P/V/K expõe geometria complementar sem landmarks', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  const engine = new r.LibrasEngine();
+  diag.startCalibration({ intendedLetter: 'O', physicalHand: 'left', orientation: 'side',
+    distance: 'medium', mirrored: true });
+  engine.update({ landmarks: [pose('A')] }, 100, 20);
+  const sample = diag.read().events.find((event) => event.type === 'recognition');
+  for (const field of ['scoreS', 'scoreE', 'palmProjectedArea', 'palmDepthSpan',
+    'fingerAngleIM', 'tipClusterIMR']) {
+    assert.ok(Number.isFinite(sample[field]), field);
+  }
+  assert.equal(sample.scoreA, 1);
+  assert.equal(sample.scoreO, 1);
+  assert.equal(diag.read().events.some((event) => 'landmarks' in event), false);
+  const hand = twoFingerCalibrationPose({ down: true, thumbY: .43 });
+  hand[17] = { ...hand[17], z: .03 };
+  diag.startCalibration({ intendedLetter: 'P', physicalHand: 'right', orientation: 'front',
+    distance: 'medium', mirrored: false });
+  new r.LibrasEngine().update({ landmarks: [hand] }, 200, 20);
+  const original = diag.read().events.find((event) => event.type === 'recognition');
+  const transformed = hand.map((point) => ({
+    x: 1 - (.5 + (point.x - .5) * 1.2),
+    y: .2 + (point.y - .2) * 1.2,
+    z: point.z * 1.2
+  }));
+  diag.startCalibration({ intendedLetter: 'P', physicalHand: 'left', orientation: 'front',
+    distance: 'medium', mirrored: true });
+  new r.LibrasEngine().update({ landmarks: [transformed] }, 300, 20);
+  const mirrored = diag.read().events.find((event) => event.type === 'recognition');
+  for (const field of ['palmProjectedArea', 'palmDepthSpan', 'tipClusterIMR']) {
+    assert.ok(original[field] > 0, field);
+    assert.ok(Math.abs(original[field] - mirrored[field]) < 1e-9, field);
+  }
+  diag.disable();
+  assert.equal(diag.read().events.length, 0);
+});
+
 test('calibração registra geometria escalar do J sem guardar a trajetória', async () => {
   const r = await browserRuntime();
   const diag = r.window.librasArcadeDiagnostics;
@@ -2180,6 +2255,25 @@ test('O/A possuem escore saturado em uma fixture e O distingue outra configuraç
   assert.ok(distinct.gap > 0);
 });
 
+test('A e O sintéticos mantêm confirmação sob espelho, rotação e escala moderada', async () => {
+  const r = await browserRuntime();
+  for (const letter of ['A', 'O']) {
+    for (const mirror of [false, true]) {
+      for (const [angle, scale] of [[0, 1], [Math.PI / 4, .85], [Math.PI / 3, 1.15]]) {
+        const engine = new r.LibrasEngine();
+        const signs = [];
+        engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+        const hand = oaCalibrationPose(letter, { mirror, angle, scale });
+        for (let at = 100; at <= 750; at += 50) {
+          r.clock.now = at;
+          engine.update({ landmarks: [hand] }, at, 20);
+        }
+        assert.deepEqual(signs, [letter], `${letter}, espelho=${mirror}, ângulo=${angle}`);
+      }
+    }
+  }
+});
+
 test('V não exige orientação; polegar e direção distinguem fixtures P e K', async () => {
   const r = await browserRuntime();
   const diag = r.window.librasArcadeDiagnostics;
@@ -2224,6 +2318,96 @@ test('V não exige orientação; polegar e direção distinguem fixtures P e K',
     const oblique = diag.read().events.find((event) => event.type === 'recognition');
     assert.equal(oblique.scoreV, 1);
   }
+});
+
+test('P com polegar projetado perto do limite não confirma V em nenhuma mão simulada', async () => {
+  const r = await browserRuntime();
+  for (const mirror of [false, true]) {
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.startCalibration({ intendedLetter: 'P', physicalHand: mirror ? 'left' : 'right',
+      orientation: 'oblique', distance: 'medium', mirrored: mirror });
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    const hand = twoFingerCalibrationPose({ down: true, thumbY: .43, mirror });
+    for (let at = 100; at <= 750; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+    const sample = diag.read().events.find((event) => event.type === 'recognition');
+    assert.ok(sample.scoreP > sample.scoreV, `P=${sample.scoreP}, V=${sample.scoreV}`);
+    assert.deepEqual(signs, ['P'], `espelho ${mirror}`);
+    diag.stopCalibration();
+  }
+});
+
+test('P, V e K mantêm decisão estável com espelho, inclinação e ruído pequeno', async () => {
+  const r = await browserRuntime();
+  for (const mirror of [false, true]) {
+    for (const [letter, down, thumbY, angle] of [
+      ['P', true, .52, Math.PI / 9],
+      ['V', false, .8, Math.PI / 4],
+      ['K', false, .48, -Math.PI / 12]
+    ]) {
+      const engine = new r.LibrasEngine();
+      const signs = [];
+      engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+      for (let at = 100; at <= 850; at += 50) {
+        r.clock.now = at;
+        const jitter = ((at / 50) % 3 - 1) * .003;
+        const hand = twoFingerCalibrationPose({ down, thumbY: thumbY + jitter, mirror, angle });
+        engine.update({ landmarks: [hand] }, at, 20);
+      }
+      assert.deepEqual(signs, [letter], `${letter}, espelho=${mirror}`);
+    }
+  }
+});
+
+test('P reconhecido chega à UI e é aceito no Treino e no Soletrar uma única vez', async () => {
+  for (const mode of ['practice', 'word']) {
+    const r = await browserRuntime();
+    const game = new r.Game();
+    const engine = new r.LibrasEngine();
+    new r.UI(engine, game, new r.ForcaGame());
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.enable();
+    r.cards[mode === 'practice' ? 0 : 1].click();
+    game.target = mode === 'practice' ? 'P' : 'PA';
+    if (mode === 'word') game.wordIndex = 0;
+    for (let at = 100; at <= 1700; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [twoFingerCalibrationPose({ down: true, thumbY: .43 })] }, at, 20);
+    }
+    const events = diag.read().events;
+    assert.equal(events.filter((event) => event.type === 'signconfirmed' && event.letter === 'P').length, 1);
+    assert.ok(events.some((event) => event.type === 'ui_received' && event.letter === 'P'));
+    assert.ok(events.some((event) => event.type === 'game_decision' && event.letter === 'P' &&
+      event.reason === 'accepted' && event.mode === mode));
+    if (mode === 'word') assert.equal(game.wordIndex, 1);
+  }
+});
+
+test('Treino rejeita V verdadeiro quando espera P e aceita P após liberação', async () => {
+  const r = await browserRuntime();
+  const game = new r.Game();
+  const engine = new r.LibrasEngine();
+  new r.UI(engine, game, new r.ForcaGame());
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.enable();
+  r.cards[0].click();
+  game.target = 'P';
+  const frame = (at, hand) => {
+    r.clock.now = at;
+    engine.update({ landmarks: hand ? [hand] : [] }, at, 20);
+  };
+  for (let at = 100; at <= 750; at += 50) frame(at, twoFingerCalibrationPose({ thumbY: .8 }));
+  for (let at = 800; at <= 1100; at += 50) frame(at, null);
+  for (let at = 1150; at <= 2500; at += 50) frame(at, twoFingerCalibrationPose({ down: true, thumbY: .43 }));
+  const decisions = diag.read().events.filter((event) => event.type === 'game_decision');
+  assert.ok(decisions.some((event) => event.letter === 'V' && event.expected === 'P' &&
+    event.reason === 'wrong_letter'));
+  assert.ok(decisions.some((event) => event.letter === 'P' && event.expected === 'P' &&
+    event.reason === 'accepted'));
 });
 
 test('empate A/O persiste sob espelhamento e rotação sintética da mão', async () => {

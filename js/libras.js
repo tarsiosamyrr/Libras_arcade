@@ -93,9 +93,10 @@ export const CONFIG = {
   THUMB_INDEX_ANGLE_G_LO: 0,
   THUMB_INDEX_ANGLE_G_HI: 40,
 
-  // --- novo: orientação da mão no espaço (G/Q, K/P, H/U) ---
+  // --- orientação projetada da mão (G/Q, K/P, H/U e concorrência V/P) ---
   ANGLE_TOL_ON: 30,        // graus — dentro disso, direção considerada correta
   ANGLE_TOL_OFF: 90,       // graus — fora disso, direção considerada errada
+  V_DOWN_THUMB_DISCOUNT: 0.20, // reduz V só quando a orientação de P e o polegar próximo coexistem
 
   // --- gestos com MOVIMENTO (J, Z) ---
   MOTION_WINDOW_MS: 1300,          // janela de tempo analisada
@@ -296,6 +297,25 @@ function extractFeatures(lm) {
   };
 }
 
+/** Medidas adicionais só na captura rotulada; área projetada não prova orientação 3D. */
+function calibrationGeometry(lm, scale) {
+  const wrist = lm[LM.WRIST];
+  const indexMcp = lm[LM.INDEX_MCP];
+  const pinkyMcp = lm[LM.PINKY_MCP];
+  const imTipX = (lm[LM.INDEX_TIP].x + lm[LM.MIDDLE_TIP].x) / 2;
+  const imTipY = (lm[LM.INDEX_TIP].y + lm[LM.MIDDLE_TIP].y) / 2;
+  const imMcpX = (indexMcp.x + lm[LM.MIDDLE_MCP].x) / 2;
+  const imMcpY = (indexMcp.y + lm[LM.MIDDLE_MCP].y) / 2;
+  return {
+    palmProjectedArea: Math.abs((indexMcp.x - wrist.x) * (pinkyMcp.y - wrist.y) -
+      (indexMcp.y - wrist.y) * (pinkyMcp.x - wrist.x)) / (scale * scale),
+    palmDepthSpan: Math.abs((indexMcp.z ?? 0) - (pinkyMcp.z ?? 0)) / scale,
+    fingerAngleIM: vecAngleUpDeg(imTipX - imMcpX, imTipY - imMcpY),
+    tipClusterIMR: (dist(lm[LM.INDEX_TIP], lm[LM.MIDDLE_TIP]) +
+      dist(lm[LM.MIDDLE_TIP], lm[LM.RING_TIP])) / (2 * scale)
+  };
+}
+
 /**
  * Cada regra devolve uma confiança 0..1 a partir das features.
  * A confiança final da letra é a MÉDIA dos componentes checados — assim,
@@ -377,7 +397,7 @@ const RULES = {
     );
   },
   V(f) {
-    return avg(
+    const shapeScore = avg(
       fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
@@ -385,6 +405,8 @@ const RULES = {
       fuzzyOn(f.spreadIM, CONFIG.SPREAD_TOGETHER, CONFIG.SPREAD_APART),
       fuzzyOn(f.thumbBetweenIM, CONFIG.THUMB_NEAR_ON, CONFIG.THUMB_NEAR_OFF)
     );
+    const thumbNear = fuzzyOff(f.thumbBetweenIM, CONFIG.THUMB_NEAR_ON, CONFIG.THUMB_NEAR_OFF);
+    return shapeScore * (1 - CONFIG.V_DOWN_THUMB_DISCOUNT * thumbNear * downScore(f.pointAngleIM));
   },
   W(f) {
     return avg(
@@ -535,7 +557,7 @@ const RULES = {
 };
 
 // Apenas durante calibração voluntária: concorrentes dos grupos em análise.
-const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'F', 'G', 'I', 'K', 'O', 'P', 'T', 'V', 'Y']);
+const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'E', 'F', 'G', 'I', 'K', 'O', 'P', 'S', 'T', 'V', 'Y']);
 const CALIBRATION_FEATURES = [
   'extIndex', 'extMiddle', 'extRing', 'extPinky',
   'curlIndex', 'curlMiddle', 'curlRing', 'curlPinky',
@@ -904,13 +926,13 @@ export class LibrasEngine extends EventTarget {
       this._advanceConfirmation(gateOpen ? this.state.letter : null, nowMs);
     }
 
-    if (diagnostics.enabled) this._traceFrame(nowMs, true, ranking);
+    if (diagnostics.enabled) this._traceFrame(nowMs, true, ranking, true, rightLm, scale);
     this._emit();
     return this.state;
   }
 
   /** Registra só decisões escalares; não retém features ou landmarks da mão. */
-  _traceFrame(nowMs, handPresent, ranking, landmarksValid = true) {
+  _traceFrame(nowMs, handPresent, ranking, landmarksValid = true, landmarks = null, scale = null) {
     const phase = this.state.recognitionPhase;
     const motionStatus = this._motionRejectedKey ? 'rejected' :
       this._motionNeedsSettle ? 'residual' :
@@ -940,6 +962,7 @@ export class LibrasEngine extends EventTarget {
     if (diagnostics.calibrationActive && handPresent && this.state.features) {
       for (const name of CALIBRATION_FEATURES) sample[name] = this.state.features[name];
       Object.assign(sample, ranking.calibrationScores);
+      Object.assign(sample, calibrationGeometry(landmarks, scale));
     }
     diagnostics.observe(sample, nowMs);
   }
