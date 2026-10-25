@@ -324,7 +324,7 @@ function calibrationGeometry(lm, scale) {
  */
 const RULES = {
   A(f) {
-    return avg(
+    const shapeScore = avg(
       fuzzyOff(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOff(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
@@ -332,6 +332,10 @@ const RULES = {
       // Torna a checagem do polegar mais tolerante (baixa os limiares)
       fuzzyOn(f.thumbOut, CONFIG.THUMB_TUCK_OFF * 0.7, CONFIG.THUMB_OUT_ON * 0.7)
     );
+    // O faz pinça polegar–médio; a evidência reduz até um sexto do escore de A.
+    const thumbSeparate = fuzzyOn(f.thumbMiddlePinch, CONFIG.PINCH_ON, CONFIG.PINCH_ON + 0.25);
+    if (thumbSeparate === 1) return shapeScore;
+    return shapeScore * (5 + thumbSeparate) / 6;
   },
   B(f) {
     return avg(

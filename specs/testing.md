@@ -2,6 +2,12 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
+## Verificação atual — FASE 03.3B-2A.1, O/A e metadados de tentativa
+
+Em 25/10/2026, HEAD inicial `595e80c`, branch `recovery/fase-033b13-6170a2d`, a linha de base passou em `npm.cmd test` com **171/171**. O JSON escalar bruto de 12 capturas estava em Downloads e foi analisado sem copiar seus dados ao repositório. O empate O/A na fixture e a perda do rótulo após 120 eventos foram demonstrados por três testes novos vermelhos antes da implementação. Uma primeira forma da regra A elevou o escore em poses sem pinça; a suíte diferencial encontrou o efeito, e a regra final conserva exatamente o escore anterior nesse caso. As fixtures históricas de A, antes com polegar e pontas sobrepostos, foram separadas em A com polegar afastado e O com pinça.
+
+Seis testes novos cobrem O ambíguo, A verdadeiro, espelho/projeção/escala, entrega ao Treino e Soletrar no mesmo instante do hold, retenção de rótulo e primeira confirmação além do anel de 120 eventos, resultado incorreto/ausente e controle ascendente V/K. `npm.cmd test` passou **177/177**, `npm.cmd run test:camera` **164/164** e `npm.cmd run test:performance` **13/13**. Sintaxe de `js/*.js` e do teste alterado, validador de specs, links locais e `git diff --check`/`git diff --cached --check` passaram. A cópia do relatório de Downloads foi conferida por SHA-256. A suíte de câmera usa landmarks/DOM simulados e a de performance verifica contratos, sem benchmark de CPU/RAM/FPS. A análise retrospectiva de amostras não substitui webcam após a mudança. [Decisão e riscos](changes/2026-10-25-fase-033b2a1-oa.md).
+
 ## Verificação atual — FASE 03.3B-2A, O/A e P/V/K
 
 Em 25/10/2026, branch `recovery/fase-033b13-6170a2d`, HEAD inicial `690a979`, baseline `npm.cmd test` **165/165**, `test:camera` **152/152** e `test:performance` **13/13**. O relatório rotulado de 12 buffers estava presente como arquivo não rastreado; o JSON bruto e landmarks não estavam no worktree. O empate A/O em 1,00 e a vitória de V sobre P descendente foram confirmados no código e nas fixtures existentes. Um teste novo pelo `LibrasEngine.update()` falhou antes da correção: na P sintética com polegar projetado perto do limite, `scoreP=0,9105` e `scoreV=0,9377`, produzindo V. O teste da nova instrumentação também falhou antes por ausência de `scoreS`.

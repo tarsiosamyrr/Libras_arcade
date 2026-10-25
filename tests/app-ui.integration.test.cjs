@@ -34,7 +34,10 @@ function pose(base, dx = 0, dy = 0) {
   const lm = Array.from({ length: 21 }, () => ({ x: .5, y: .75, z: 0 }));
   lm[0] = { x: .5, y: .8, z: 0 };
   for (const i of [5, 9, 13, 17]) lm[i] = { x: .5, y: .6, z: 0 };
-  if (base === 'A') return lm;
+  if (base === 'A') {
+    lm[4] = { x: .7, y: .7, z: 0 }; // polegar distante das pontas agrupadas
+    return lm;
+  }
   const mcp = base === 'J' || base === 'I' ? 17 : 5;
   const pip = base === 'J' || base === 'I' ? 18 : 6;
   const tip = base === 'J' || base === 'I' ? 20 : 8;
@@ -96,6 +99,29 @@ function oaCalibrationPose(letter, { mirror = false, angle = 0, scale = 1 } = {}
     const y = .8 + dx * Math.sin(angle) + dy * Math.cos(angle);
     return { x: mirror ? 1 - x : x, y, z: point.z };
   });
+}
+
+// A pinça de O pode coexistir com os quatro dedos sem extensão e polegar afastado da base.
+function ambiguousOPose({ mirror = false, width = 1, scale = 1, depth = 0 } = {}) {
+  const hand = pose('A').map((point) => ({ ...point }));
+  hand[4] = { x: .5, y: .75, z: 0 };
+  hand[5] = { x: .43, y: .6, z: depth };
+  hand[17] = { x: .58, y: .6, z: -depth };
+  return hand.map((point) => ({
+    x: mirror ? 1 - (.5 + (point.x - .5) * width * scale) : .5 + (point.x - .5) * width * scale,
+    y: .8 + (point.y - .8) * scale,
+    z: point.z * scale
+  }));
+}
+
+function trueAPose({ mirror = false, width = 1, scale = 1, depth = 0 } = {}) {
+  const hand = pose('A').map((point) => ({ ...point }));
+  hand[4] = { x: .7, y: .7, z: depth };
+  return hand.map((point) => ({
+    x: mirror ? 1 - (.5 + (point.x - .5) * width * scale) : .5 + (point.x - .5) * width * scale,
+    y: .8 + (point.y - .8) * scale,
+    z: point.z * scale
+  }));
 }
 
 test('cooldown confirma gesto estático uma vez e mantém a pose prolongada bloqueada', async () => {
@@ -1944,7 +1970,7 @@ test('calibração opcional exige rótulos e guarda somente escalares limitados 
   assert.equal(start.distance, 'medium');
   assert.equal(start.mirrored, true);
   assert.equal(sample.scoreA, 1);
-  assert.equal(sample.scoreO, 1);
+  assert.ok(sample.scoreO < sample.scoreA);
   assert.ok(Number.isFinite(sample.extIndex));
   assert.ok(Number.isFinite(sample.thumbMiddlePinch));
   assert.ok(Number.isFinite(confirmed.elapsedMs));
@@ -1976,7 +2002,7 @@ test('calibração O/A e P/V/K expõe geometria complementar sem landmarks', asy
     assert.ok(Number.isFinite(sample[field]), field);
   }
   assert.equal(sample.scoreA, 1);
-  assert.equal(sample.scoreO, 1);
+  assert.ok(sample.scoreO < sample.scoreA);
   assert.equal(diag.read().events.some((event) => 'landmarks' in event), false);
   const hand = twoFingerCalibrationPose({ down: true, thumbY: .43 });
   hand[17] = { ...hand[17], z: .03 };
@@ -2232,17 +2258,17 @@ test('diagnóstico expõe o empate heurístico I/Y sem tratá-lo como probabilid
   assert.equal(sample.candidateEligible, true);
 });
 
-test('O/A possuem escore saturado em uma fixture e O distingue outra configuração', async () => {
+test('pinça reduz A na configuração ambígua e preserva O distinto', async () => {
   const r = await browserRuntime();
   const diag = r.window.librasArcadeDiagnostics;
   diag.enable();
-  new r.LibrasEngine().update({ landmarks: [pose('A')] }, 100, 20);
-  const tied = diag.read().events.find((event) => event.type === 'recognition');
-  assert.equal(tied.candidate, 'A');
-  assert.equal(tied.second, 'O');
-  assert.equal(tied.score, 1);
-  assert.equal(tied.secondScore, 1);
-  assert.equal(tied.gap, 0);
+  new r.LibrasEngine().update({ landmarks: [ambiguousOPose()] }, 100, 20);
+  const ambiguous = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal(ambiguous.candidate, 'O');
+  assert.equal(ambiguous.second, 'A');
+  assert.equal(ambiguous.score, 1);
+  assert.ok(ambiguous.secondScore < 1);
+  assert.ok(ambiguous.gap > 0);
 
   diag.clear();
   const hand = pose('A');
@@ -2410,10 +2436,10 @@ test('Treino rejeita V verdadeiro quando espera P e aceita P após liberação',
     event.reason === 'accepted'));
 });
 
-test('empate A/O persiste sob espelhamento e rotação sintética da mão', async () => {
+test('pinça separa O de A sob espelhamento e rotação sintética da mão', async () => {
   const r = await browserRuntime();
   const diag = r.window.librasArcadeDiagnostics;
-  const base = pose('A');
+  const base = ambiguousOPose();
   for (const angle of [0, Math.PI / 3]) {
     for (const mirror of [false, true]) {
       const hand = base.map((point) => {
@@ -2425,14 +2451,14 @@ test('empate A/O persiste sob espelhamento e rotação sintética da mão', asyn
         orientation: 'front', distance: 'medium', mirrored: mirror });
       new r.LibrasEngine().update({ landmarks: [hand] }, 100, 20);
       const sample = diag.read().events.find((event) => event.type === 'recognition');
-      assert.equal(sample.scoreA, 1);
+      assert.ok(sample.scoreA < sample.scoreO);
       assert.equal(sample.scoreO, 1);
-      assert.equal(sample.candidate, 'A');
+      assert.equal(sample.candidate, 'O');
     }
   }
 });
 
-test('Soletrar rejeita A empatado com O e aceita O após liberação', async () => {
+test('Soletrar rejeita A verdadeira quando O é alvo e aceita O após liberação', async () => {
   const r = await browserRuntime();
   const game = new r.Game();
   const engine = new r.LibrasEngine();
@@ -2477,6 +2503,149 @@ test('diagnóstico informa troca de candidata e rejeição de trajetória incoer
   }
   assert.ok(diag.read().events.some((event) => event.type === 'motion_rejected' &&
     event.reason === 'incoherent_trajectory'));
+});
+
+test('O com pinça vence A sob projeção frontal e lateral, espelho e escala', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  for (const mirror of [false, true]) {
+    for (const [width, scale, depth] of [[1, 1, 0], [.35, .8, .06], [.65, 1.2, .03]]) {
+      diag.startCalibration({ intendedLetter: 'O', physicalHand: mirror ? 'left' : 'right',
+        orientation: width === 1 ? 'front' : 'side', distance: 'medium', mirrored: mirror });
+      const engine = new r.LibrasEngine();
+      const signs = [];
+      engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+      const hand = ambiguousOPose({ mirror, width, scale, depth });
+      for (let at = 100; at <= 750; at += 50) {
+        r.clock.now = at;
+        engine.update({ landmarks: [hand] }, at, 20);
+      }
+      const sample = diag.read().events.find((event) => event.type === 'recognition');
+      assert.ok(sample.scoreO > sample.scoreA, `O=${sample.scoreO}, A=${sample.scoreA}`);
+      assert.deepEqual(signs, ['O'], `espelho=${mirror}, largura=${width}`);
+      assert.equal(diag.stopCalibration().calibration.confirmation, 'correct');
+    }
+  }
+});
+
+test('A com polegar separado permanece A sob projeção e profundidade variadas', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  for (const mirror of [false, true]) {
+    for (const [width, scale, depth] of [[1, 1, 0], [.35, .8, .15], [.65, 1.2, .12]]) {
+      diag.startCalibration({ intendedLetter: 'A', physicalHand: mirror ? 'left' : 'right',
+        orientation: width === 1 ? 'front' : 'side', distance: 'far', mirrored: mirror });
+      const engine = new r.LibrasEngine();
+      const signs = [];
+      engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+      const hand = trueAPose({ mirror, width, scale, depth });
+      for (let at = 100; at <= 750; at += 50) {
+        r.clock.now = at;
+        engine.update({ landmarks: [hand] }, at, 20);
+      }
+      const sample = diag.read().events.find((event) => event.type === 'recognition');
+      assert.ok(sample.scoreA > sample.scoreO, `A=${sample.scoreA}, O=${sample.scoreO}`);
+      assert.deepEqual(signs, ['A'], `espelho=${mirror}, largura=${width}`);
+      diag.stopCalibration();
+    }
+  }
+});
+
+test('O ambíguo é aceito pelo Treino e Soletrar uma vez no tempo do hold', async () => {
+  for (const mode of ['practice', 'word']) {
+    const r = await browserRuntime();
+    const game = new r.Game();
+    const engine = new r.LibrasEngine();
+    new r.UI(engine, game, new r.ForcaGame());
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.enable();
+    r.cards[mode === 'practice' ? 0 : 1].click();
+    game.target = mode === 'practice' ? 'O' : 'OA';
+    if (mode === 'word') game.wordIndex = 0;
+    const hand = ambiguousOPose({ width: .35, depth: .06 });
+    for (let at = 100; at <= 2100; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+    const events = diag.read().events;
+    assert.equal(events.filter((event) => event.type === 'signconfirmed').length, 1);
+    assert.ok(events.some((event) => event.type === 'signconfirmed' && event.letter === 'O' && event.at === 700));
+    assert.ok(events.some((event) => event.type === 'game_decision' && event.letter === 'O' &&
+      event.reason === 'accepted'));
+  }
+});
+
+test('rótulos e desfecho da tentativa sobrevivem ao anel de 120 eventos e são apagados', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  assert.throws(() => diag.startCalibration({ intendedLetter: 'A', physicalHand: 'left',
+    distance: 'far', mirrored: true }), /orientação/);
+  diag.startCalibration({ intendedLetter: 'A', physicalHand: 'left', orientation: 'side',
+    distance: 'far', mirrored: true });
+  const engine = new r.LibrasEngine();
+  const hand = trueAPose({ mirror: true, width: .35, depth: .15 });
+  for (let at = 100; at <= 33000; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [hand] }, at, 20);
+  }
+  const active = diag.read();
+  assert.equal(active.events.length, 120);
+  assert.equal(active.events.some((event) => event.type === 'calibration_start'), false);
+  assert.equal(active.calibration.orientation, 'side');
+  assert.equal(active.calibration.physicalHand, 'left');
+  assert.equal(active.calibration.confirmation, 'correct');
+  const stopped = diag.stopCalibration();
+  assert.equal(stopped.calibration.intendedLetter, 'A');
+  assert.equal(stopped.calibration.distance, 'far');
+  assert.equal(stopped.calibration.mirrored, true);
+  assert.equal(stopped.calibration.confirmation, 'correct');
+  stopped.calibration.orientation = 'front';
+  assert.equal(diag.read().calibration.orientation, 'side');
+  diag.startCalibration({ intendedLetter: 'O', physicalHand: 'right', orientation: 'oblique',
+    distance: 'near', mirrored: false });
+  assert.equal(diag.stopCalibration().calibration.confirmation, 'absent');
+  diag.clear();
+  assert.equal(diag.read().calibration, null);
+  diag.disable();
+  assert.equal(diag.read().calibration, null);
+});
+
+test('captura rotulada registra confirmação incorreta sem usar o alvo do jogo', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'O', physicalHand: 'right', orientation: 'side',
+    distance: 'medium', mirrored: false });
+  const engine = new r.LibrasEngine();
+  const hand = trueAPose();
+  for (let at = 100; at <= 750; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [hand] }, at, 20);
+  }
+  const result = diag.stopCalibration();
+  assert.equal(result.calibration.confirmation, 'incorrect');
+  assert.equal(result.calibration.firstConfirmedLetter, 'A');
+});
+
+test('controle V/K ascendente mantém V sem desconto e confirma K nas duas projeções espelhadas', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  for (const mirror of [false, true]) {
+    diag.startCalibration({ intendedLetter: 'K', physicalHand: mirror ? 'left' : 'right',
+      orientation: 'front', distance: 'medium', mirrored: mirror });
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    const hand = twoFingerCalibrationPose({ thumbY: .48, mirror });
+    for (let at = 100; at <= 750; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+    const sample = diag.read().events.find((event) => event.type === 'recognition');
+    assert.equal(sample.scoreV, 5 / 6); // direção ascendente não ativa o desconto de V
+    assert.ok(sample.scoreK > sample.scoreV);
+    assert.deepEqual(signs, ['K']);
+    diag.stopCalibration();
+  }
 });
 
 test('pending model initialization is cancelled on pagehide and retried after restoration', async () => {

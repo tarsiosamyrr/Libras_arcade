@@ -37,6 +37,7 @@ class RecognitionDiagnostics {
     this._mode = null;
     this._screen = 'home';
     this._calibration = null;
+    this._calibrationSummary = null;
   }
 
   get calibrationActive() { return this._calibration !== null; }
@@ -63,6 +64,10 @@ class RecognitionDiagnostics {
     this.enable();
     const at = performance.now();
     this._calibration = { at };
+    this._calibrationSummary = {
+      intendedLetter, physicalHand, orientation, distance, mirrored,
+      confirmation: 'absent', firstConfirmedLetter: null, confirmationCount: 0
+    };
     this.record('calibration_start', { intendedLetter, physicalHand, orientation, distance, mirrored }, at);
   }
 
@@ -86,6 +91,7 @@ class RecognitionDiagnostics {
     this._lastMotionSampleAt = -Infinity;
     this._lastMotionReason = null;
     this._calibration = null;
+    this._calibrationSummary = null;
   }
 
   /** Atualiza contexto de navegação sem criar evento ou trabalho por frame. */
@@ -106,6 +112,12 @@ class RecognitionDiagnostics {
     }
     if (this._calibration && type === 'signconfirmed') {
       entry.elapsedMs = Math.max(0, at - this._calibration.at);
+      this._calibrationSummary.confirmationCount++;
+      if (this._calibrationSummary.firstConfirmedLetter === null) {
+        this._calibrationSummary.firstConfirmedLetter = entry.letter ?? null;
+        this._calibrationSummary.confirmation = entry.letter === this._calibrationSummary.intendedLetter
+          ? 'correct' : 'incorrect';
+      }
     }
     this._events[this._next] = entry;
     this._next = (this._next + 1) % CAPACITY;
@@ -138,6 +150,7 @@ class RecognitionDiagnostics {
       events.push({ ...this._events[(this._next - this._size + i + CAPACITY) % CAPACITY] });
     }
     return { enabled: this.enabled, calibrationActive: this.calibrationActive,
+      calibration: this._calibrationSummary ? { ...this._calibrationSummary } : null,
       capacity: CAPACITY, events };
   }
 }

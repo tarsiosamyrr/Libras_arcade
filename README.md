@@ -74,6 +74,8 @@ Na FASE 03.3B-1.4.1, o J curto passou a conservar o ponto final original após s
 
 Na FASE 03.3B-2A, V recebe um desconto de escore apenas quando o polegar se aproxima da região entre indicador/médio **e** os dedos apontam para baixo na imagem, reduzindo a confusão sintética com P. O/A permanece sem recalibração: o empate A/O e a falha rotulada de O com a mão esquerda exigem escalares por tentativa para evitar prejudicar A verdadeiro. A calibração local opcional passou a mostrar projeção da palma, direção dos dedos, agrupamento das pontas e escores concorrentes adicionais. Nenhuma melhora de reconhecimento com webcam foi medida após essa mudança.
 
+Na FASE 03.3B-2A.1, A recebe apenas um desconto quando a ponta do polegar se aproxima da ponta do médio, usando a faixa de pinça já existente; O e o desconto P/V/K permanecem iguais. A análise retrospectiva dos escalares de 12 capturas motivou a mudança, mas não equivale a nova homologação: faltam controles A laterais reais e rótulos confiáveis de orientação em algumas janelas. [Diagnóstico e protocolo](docs/qa/Libras_Arcade_Diagnostico_OA_033B2A1_2026-10-25.md).
+
 A configuração atual detecta **uma mão** (`numHands: 1`), atribui a primeira detecção ao papel lógico `right` e mantém `REQUIRE_LEFT_HAND: false`. Não identifica lateralidade nesse caminho. O painel de duas mãos é um resquício de outra configuração; ativar só a flag da esquerda impediria confirmações.
 
 As 90 palavras cadastradas têm dicas e usam letras da cobertura nominal. A dificuldade das palavras não é filtrada pela dificuldade individual das letras; Soletrar/Forca não têm exatamente o mesmo conjunto por nível que Treino.
@@ -152,16 +154,19 @@ Para uma tentativa **voluntária e rotulada**, informe no console a letra que vo
 ```javascript
 const diag = window.librasArcadeDiagnostics;
 diag.startCalibration({
-  intendedLetter: 'O', physicalHand: 'left', orientation: 'front',
+  intendedLetter: 'O', physicalHand: 'left', orientation: 'side',
   distance: 'medium', mirrored: true
 });
-// Faça uma tentativa; depois examine o resultado conscientemente.
+// Faça uma tentativa lateral; ajuste orientation à execução real em cada início.
 const attempt = diag.stopCalibration();
+attempt.calibration; // rótulos e primeira confirmação, mesmo se o evento inicial saiu do anel
 attempt.events;
 diag.disable(); // apaga os dados da memória da aba
 ```
 
 Use `left`/`right`, `front`/`oblique`/`side` e `near`/`medium`/`far`. Cada `startCalibration()` limpa a tentativa anterior. `stopCalibration()` interrompe a captura e conserva até 120 eventos em memória para leitura; `disable()` apaga. Durante uma tentativa rotulada, `clear()` cancela o rótulo: inicie outra tentativa para continuar. As amostras incluem features escalares dos dedos, polegar, orientação projetada e escores A/B/C/F/G/I/K/O/P/T/V/Y; para J incluem descida/desvio da haste, consistência, retorno do gancho, amostras, duração, curva e `reason` da condição avaliada. `motion_base_lost` marca perda breve da pose I; `motion_rejected` com `stale_history` ou `tracking_discontinuity` marca descarte. Não há imagens, vídeo ou landmarks brutos. `elapsedMs` parte do início manual da captura, não é latência de inferência. Nada é salvo ou enviado automaticamente. [Decisão da 03.3B-1.3](specs/changes/2026-10-24-fase-033b13-j-segmentacao.md).
+
+Na 03.3B-2A.1, `read().calibration` e o retorno de `stopCalibration()` conservam `intendedLetter`, mão física, orientação **declarada**, distância e espelhamento mesmo após `calibration_start` sair do anel. `confirmation` é `correct`, `incorrect` ou `absent`, comparando a primeira letra confirmada à intenção; `firstConfirmedLetter` e `confirmationCount` ajudam a descartar capturas com múltiplas confirmações. A orientação não é inferida nem recebe `front` por padrão: confirme a pose executada antes de iniciar e reinicie a tentativa se a orientação mudar. O resumo existe só na memória da aba e também é apagado por `clear()`/`disable()`.
 
 `recognition` contém `handPresent`, `landmarksValid` (21 pontos com `x/y` finitos), `candidate`/`second` (primeira e segunda regras estáticas), `candidateEligible` (passou de `MIN_SCORE`), `score`/`secondScore`, `gap`, `phase`, `stabilizingMs`, `cooldownRemainingMs`, `motionLetter`, `motionSamples`, `motionProgress`, `motionStatus` e `reason`. Escores são médias heurísticas, **não probabilidades**. `signconfirmed` registra emissão; `ui_received`, chegada à UI; `game_decision`, aceitação ou rejeição; `ui_target`, atualização do alvo; `round_start` e `game_timeout`, ciclo da rodada. `mode` e `screen` indicam o contexto. Ausência de `signconfirmed` após uma candidata visível indica perda antes do evento, geralmente limiar, instabilidade, trajetória ou fase temporal; um `game_decision` rejeitado mostra a razão do motor. `input_invalid` marca uma estrutura de landmarks incompleta sem guardar as coordenadas.
 
