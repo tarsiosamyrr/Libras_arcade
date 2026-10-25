@@ -406,6 +406,53 @@ test('J curto completo em seis amostras não precisa esperar um segundo para for
     event.reason === 'accepted' && event.shortHook === true));
 });
 
+test('J curto conserva a subida terminal válida quando a média centrada a reduz', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'J', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  const rig = recognitionRig(r);
+  const path = [[.2,.1],[.2,.22],[.2,.39],[.24,.55],[.38,.56],[.52,.40]];
+  const times = [100, 151, 205, 263, 316, 374];
+  path.forEach(([x, y], index) => rig.frame('J', times[index], x, y));
+  const geometry = diag.read().events.filter((event) => event.type === 'motion_geometry');
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J'], JSON.stringify(geometry));
+  assert.ok(geometry.some((event) => event.reason === 'accepted' && event.shortHook === true));
+});
+
+test('J curto com subida terminal menor mas suficiente mantém o gancho', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('J', 100, 55, [[.2,.1],[.2,.22],[.2,.39],[.24,.60],[.38,.60],[.52,.55]]);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+});
+
+test('I descendente com apenas um salto terminal não vira J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('J', 100, 55, [[.2,.1],[.2,.22],[.2,.39],[.2,.55],[.2,.56],[.45,.40]]);
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+});
+
+test('I com ruído isolado no último ponto não confirma J', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'I', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  const rig = recognitionRig(r);
+  rig.path('J', 100, 55, [[.2,.1],[.2,.22],[.2,.39],[.2,.55],[.2,.56],[.6,.35],[.2,.56]]);
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false,
+    JSON.stringify(diag.read().events.filter((event) => event.type === 'motion_geometry' ||
+      event.type === 'signconfirmed')));
+});
+
+test('I com retorno terminal abaixo do mínimo não confirma J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('J', 100, 55, [[.2,.1],[.2,.22],[.2,.39],[.24,.55],[.38,.56],[.52,.54]]);
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+});
+
 test('I com curva que volta no sentido lateral não produz J', async () => {
   const r = await browserRuntime();
   const rig = recognitionRig(r);

@@ -621,9 +621,10 @@ function smoothPath(pts, windowSize) {
   return out;
 }
 
-/** Média centrada só para a janela curta de J; preserva o retorno no último frame. */
+/** Média centrada nos pontos anteriores; mantém o retorno terminal observado. */
 function smoothShortJPath(pts) {
   return pts.map((point, i) => {
+    if (i === pts.length - 1) return point;
     const start = Math.max(0, i - 1);
     const end = Math.min(pts.length, i + 2);
     let x = 0, y = 0;
@@ -1281,11 +1282,17 @@ export class LibrasEngine extends EventTarget {
     if (key === 'J') {
       const rawLast = this._motionBuffer[this._motionBuffer.length - 1];
       const rawBefore = this._motionBuffer[this._motionBuffer.length - 2];
+      const rawTwoBefore = this._motionBuffer[this._motionBuffer.length - 3];
       let shapeMetrics = diagnostics.calibrationActive ? {} : null;
       let shapeReason = jShapeRejection(smoothed, shapeMetrics);
+      const terminalSide = rawLast.x - rawBefore.x;
+      const previousSide = rawBefore.x - rawTwoBefore.x;
       const shortHook = this._motionBuffer.length <= 8 &&
         (shapeReason === 'hook_absent' || shapeReason === 'hook_rise_short') &&
-        Math.abs(rawLast.x - rawBefore.x) >= CONFIG.J_SHORT_TERMINAL_SIDE &&
+        Math.abs(terminalSide) >= CONFIG.J_SHORT_TERMINAL_SIDE &&
+        // A curva lateral precisa começar antes do último frame; um salto isolado não basta.
+        Math.abs(previousSide) >= CONFIG.J_HOOK_MIN_SIDE &&
+        Math.sign(previousSide) === Math.sign(terminalSide) &&
         rawBefore.y - rawLast.y >= CONFIG.J_HOOK_MIN_RISE;
       const jPath = shortHook ? smoothShortJPath(this._motionBuffer) : smoothed;
       if (shortHook) {
