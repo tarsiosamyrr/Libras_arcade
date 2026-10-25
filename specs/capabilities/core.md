@@ -2,8 +2,8 @@
 id: core
 contract_status: confirmed
 implementation_status: partial
-last_verified: 2026-10-23
-last_verified_ref: working-tree-fase0312-automated
+last_verified: 2026-10-24
+last_verified_ref: working-tree-fase-033b14-automated
 ---
 
 # Prática de datilologia nos três jogos
@@ -37,10 +37,12 @@ A FASE 03.3B-1.2 acrescenta retorno ascendente e lateral ao J após a haste, mot
 
 Após relato de J difícil na webcam, a FASE 03.3B-1.3 substitui os três passos rígidos por haste e gancho segmentados, mantém a trajetória J ativa por uma perda breve da pose-base com pulso espacialmente contínuo e compensa variação de escala projetada apenas em J. Os testes em `update()` reproduziram antes da mudança falhas de inclinação, perda de base e escala; os controles sintéticos de I e Z permanecem. A captura opcional passou a explicar melhor a geometria e o motivo de rejeição. A capacidade segue `partial`: a melhora real e o equilíbrio entre falso J e J perdido exigem webcam, tentativas rotuladas e review independente.
 
+A homologação posterior não aprovou a 03.3B-1.3: J rápido falhou, J curto oscilou e I foi emitido em uma tentativa de J. A FASE 03.3B-1.4 separa o fim da haste do ponto inferior quando a curva ainda desce lateralmente, usa média centrada apenas em um gancho terminal claro de seis a oito pontos e limita a continuidade espacial do pulso conforme o intervalo entre callbacks. O contrato `signconfirmed` e Z continuam iguais. As falhas foram reproduzidas com landmarks sintéticos antes da correção; a causa exata de cada tentativa real e a taxa de acerto continuam desconhecidas. A capacidade permanece `partial` até nova homologação por tentativa e review do diff.
+
 ## Evidências de implementação e teste
 
 Implementação: [Game](../../js/game.js), [ForcaGame](../../js/forca.js), [LibrasEngine](../../js/libras.js) e [UI](../../js/ui.js). A inspeção incluiu todos os módulos da raiz e seus dados. Comandos, cenários reproduzidos e limitações estão em [testing.md](../testing.md). `last_verified` representa inspeção do estado, não homologação do reconhecimento.
 
 ## Relações
 
-[Roadmap](../../docs/ROADMAP.md), [matriz A–Z e protocolo](../../docs/qa/qa-reconhecimento.md), [decisões abertas](../open-decisions.md), [AGENTS](../../AGENTS.md), [mudança da FASE 01](../changes/2026-10-20-performance.md), [decisão da FASE 03.1](../changes/2026-10-23-arbitragem-estatico-dinamico.md), [decisão da FASE 03.1.2](../changes/2026-10-23-fase-0312-z-i-treino.md), [decisão da FASE 03.3B-1](../changes/2026-10-24-fase-033b1-j-oa.md), [decisão da FASE 03.3B-1.2](../changes/2026-10-24-fase-033b12-j-calibracao.md) e [decisão da FASE 03.3B-1.3](../changes/2026-10-24-fase-033b13-j-segmentacao.md). A arquitetura principal foi preservada.
+[Roadmap](../../docs/ROADMAP.md), [matriz A–Z e protocolo](../../docs/qa/qa-reconhecimento.md), [decisões abertas](../open-decisions.md), [AGENTS](../../AGENTS.md), [mudança da FASE 01](../changes/2026-10-20-performance.md), [decisão da FASE 03.1](../changes/2026-10-23-arbitragem-estatico-dinamico.md), [decisão da FASE 03.1.2](../changes/2026-10-23-fase-0312-z-i-treino.md), [decisão da FASE 03.3B-1](../changes/2026-10-24-fase-033b1-j-oa.md), [decisão da FASE 03.3B-1.2](../changes/2026-10-24-fase-033b12-j-calibracao.md), [decisão da FASE 03.3B-1.3](../changes/2026-10-24-fase-033b13-j-segmentacao.md) e [decisão da FASE 03.3B-1.4](../changes/2026-10-24-fase-033b14-j-rapido-curto.md). A arquitetura principal foi preservada.

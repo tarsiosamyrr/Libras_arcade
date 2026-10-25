@@ -17,6 +17,8 @@ const SAFE_FIELDS = new Set([
   'scoreA', 'scoreB', 'scoreC', 'scoreF', 'scoreG', 'scoreI', 'scoreK',
   'scoreO', 'scoreP', 'scoreT', 'scoreV', 'scoreY',
   'stemDescent', 'stemSide', 'stemConsistency', 'maxStemRun',
+  'stemEndIndex', 'troughIndex', 'shortHook',
+  'wristStep', 'wristGapMs', 'wristLimit',
   'hookRise', 'hookSide', 'turnDeg', 'pathLength',
   'netVertical', 'curviness', 'motionDurationMs', 'shapeValid'
 ]);

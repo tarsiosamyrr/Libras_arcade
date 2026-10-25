@@ -115,6 +115,9 @@ export const CONFIG = {
   J_STEM_MAX_LATERAL_RATIO: 1,    // no segmento, a descida deve dominar a deriva lateral
   J_HOOK_MIN_RISE: 0.03,          // retorno na fronteira do raio de pose estacionária
   J_HOOK_MIN_SIDE: 0.06,          // avanço lateral do retorno; mesmos pisos da intenção dinâmica
+  J_SHORT_TERMINAL_SIDE: 0.10,   // em 6–8 pontos, retorno lateral final acima do piso de intenção (0,06)
+  J_TRACK_REFERENCE_MS: 50,      // cadência nominal de inferência usada no limite espacial do pulso
+  J_TRACK_MAX_STEP_FACTOR: 1.75, // callback ausente amplia o passo, mas nunca libera salto arbitrário
   J_MIN_VERTICAL_NET: 0.10,       // avanço vertical líquido mínimo do gancho, na escala da mão
   J_MIN_VERTICAL_CONSISTENCY: 0.65, // parte do percurso vertical na direção dominante
   Z_DIRECTION_FLIPS_ON: 2,         // nº mínimo de inversões horizontais p/ reconhecer o zigue-zague do Z
@@ -618,6 +621,17 @@ function smoothPath(pts, windowSize) {
   return out;
 }
 
+/** Média centrada só para a janela curta de J; preserva o retorno no último frame. */
+function smoothShortJPath(pts) {
+  return pts.map((point, i) => {
+    const start = Math.max(0, i - 1);
+    const end = Math.min(pts.length, i + 2);
+    let x = 0, y = 0;
+    for (let j = start; j < end; j++) { x += pts[j].x; y += pts[j].y; }
+    return { x: x / (end - start), y: y / (end - start), t: point.t };
+  });
+}
+
 function pathLength(pts) {
   let len = 0;
   for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
@@ -660,9 +674,9 @@ function verticalDirectionConsistency(pts) {
   return total > 0 ? Math.max(positive, negative) / total : 0;
 }
 
-/** Segmenta J pelo ponto mais baixo. Retorna a condição que falhou, ou null.
- * Descida e desvio são deslocamentos líquidos normalizados; ruído entre frames
- * não precisa formar três passos consecutivos. O retorno vem depois da haste.
+/** Separa a haste no último prefixo de descida predominante antes do ponto baixo.
+ * A curva pode continuar descendo lateralmente; esses pontos já pertencem ao
+ * gancho, e não devem inclinar artificialmente a haste.
  */
 function jShapeRejection(pts, metrics = null) {
   let trough = 0;
@@ -670,25 +684,40 @@ function jShapeRejection(pts, metrics = null) {
     if (pts[i].y > pts[trough].y) trough = i;
   }
   const start = pts[0], last = pts[pts.length - 1];
-  const stemDescent = pts[trough].y - start.y;
-  const stemSide = Math.abs(pts[trough].x - start.x);
-  const hookRise = pts[trough].y - last.y;
-  const hookSide = Math.abs(last.x - pts[trough].x);
+  let stemEnd = trough;
   let down = 0, up = 0, run = 0, maxStemRun = 0;
   for (let i = 1; i <= trough; i++) {
+    const dy = pts[i].y - pts[i - 1].y;
+    if (dy > 0) { down += dy; run++; maxStemRun = Math.max(maxStemRun, run); }
+    else { up -= dy; run = 0; }
+    const descent = pts[i].y - start.y;
+    const side = Math.abs(pts[i].x - start.x);
+    if (descent >= CONFIG.MOTION_MIN_SPAN &&
+        side <= descent * CONFIG.J_STEM_MAX_LATERAL_RATIO &&
+        down / (down + up) >= CONFIG.J_MIN_VERTICAL_CONSISTENCY) {
+      stemEnd = i;
+    }
+  }
+  const stemDescent = pts[stemEnd].y - start.y;
+  const stemSide = Math.abs(pts[stemEnd].x - start.x);
+  const hookRise = pts[trough].y - last.y;
+  const hookSide = Math.abs(last.x - pts[trough].x);
+  down = 0; up = 0; run = 0; maxStemRun = 0;
+  for (let i = 1; i <= stemEnd; i++) {
     const dy = pts[i].y - pts[i - 1].y;
     if (dy > 0) { down += dy; run++; maxStemRun = Math.max(maxStemRun, run); }
     else { up -= dy; run = 0; }
   }
   if (metrics) Object.assign(metrics, {
     stemDescent, stemSide, hookRise, hookSide, maxStemRun,
-    stemConsistency: down + up > 0 ? down / (down + up) : 0
+    stemConsistency: down + up > 0 ? down / (down + up) : 0,
+    stemEndIndex: stemEnd, troughIndex: trough
   });
   if (stemDescent < CONFIG.MOTION_MIN_SPAN) return 'stem_insufficient';
   if (stemSide > stemDescent * CONFIG.J_STEM_MAX_LATERAL_RATIO) return 'stem_inclined';
   if (up > 0 && down / (down + up) < CONFIG.J_MIN_VERTICAL_CONSISTENCY) return 'stem_incoherent';
   if (hookRise <= 0) return 'hook_absent';
-  if (hookRise < CONFIG.J_HOOK_MIN_RISE) return 'hook_rise_short';
+  if (hookRise + 1e-9 < CONFIG.J_HOOK_MIN_RISE) return 'hook_rise_short';
   if (hookSide < CONFIG.J_HOOK_MIN_SIDE) return 'hook_lateral_short';
   return null;
 }
@@ -772,6 +801,7 @@ export class LibrasEngine extends EventTarget {
     this._motionReferenceScale = null;
     this._motionLastWristX = null;
     this._motionLastWristY = null;
+    this._motionLastWristAt = null;
     this._motionBaseMissing = false;
 
     // buffer do gesto de navegação (deslizar a mão da esquerda pra direita)
@@ -1136,12 +1166,16 @@ export class LibrasEngine extends EventTarget {
     if (key === 'J') {
       wristX = wrist.x / this._motionReferenceScale;
       wristY = wrist.y / this._motionReferenceScale;
+      const wristGapMs = nowMs - (this._motionLastWristAt ?? nowMs);
+      const wristStep = this._motionBuffer.length > 0
+        ? Math.hypot(wristX - this._motionLastWristX, wristY - this._motionLastWristY) : 0;
+      const wristLimit = CONFIG.MOTION_MIN_SPAN * Math.min(CONFIG.J_TRACK_MAX_STEP_FACTOR,
+        Math.max(1, wristGapMs / CONFIG.J_TRACK_REFERENCE_MS));
       if (this._motionBuffer.length > 0 &&
-          Math.hypot(wristX - this._motionLastWristX,
-          wristY - this._motionLastWristY) > CONFIG.MOTION_MIN_SPAN) {
+          wristStep > wristLimit) {
         if (diagnostics.enabled) diagnostics.record('motion_rejected', {
           motionLetter: 'J', motionSamples: this._motionBuffer.length,
-          reason: 'tracking_discontinuity'
+          reason: 'tracking_discontinuity', wristStep, wristGapMs, wristLimit
         }, nowMs);
         this._resetMotion();
         return null;
@@ -1155,6 +1189,7 @@ export class LibrasEngine extends EventTarget {
       if (activeKey) this._motionBaseMissing = false;
       this._motionLastWristX = wristX;
       this._motionLastWristY = wristY;
+      this._motionLastWristAt = nowMs;
     }
     if (activeKey || continuingJ) {
       // Referencial J: movimento do pulso na escala inicial + articulação da
@@ -1244,26 +1279,41 @@ export class LibrasEngine extends EventTarget {
     }
 
     if (key === 'J') {
-      const turn = turnAngleDeg(smoothed);
-      const straight = Math.max(netDisplacement(smoothed), 1e-4);
-      const curviness = traveled / straight;
-      const shapeMetrics = diagnostics.calibrationActive ? {} : null;
-      const shapeReason = jShapeRejection(smoothed, shapeMetrics);
+      const rawLast = this._motionBuffer[this._motionBuffer.length - 1];
+      const rawBefore = this._motionBuffer[this._motionBuffer.length - 2];
+      let shapeMetrics = diagnostics.calibrationActive ? {} : null;
+      let shapeReason = jShapeRejection(smoothed, shapeMetrics);
+      const shortHook = this._motionBuffer.length <= 8 &&
+        (shapeReason === 'hook_absent' || shapeReason === 'hook_rise_short') &&
+        Math.abs(rawLast.x - rawBefore.x) >= CONFIG.J_SHORT_TERMINAL_SIDE &&
+        rawBefore.y - rawLast.y >= CONFIG.J_HOOK_MIN_RISE;
+      const jPath = shortHook ? smoothShortJPath(this._motionBuffer) : smoothed;
+      if (shortHook) {
+        shapeMetrics = diagnostics.calibrationActive ? {} : null;
+        shapeReason = jShapeRejection(jPath, shapeMetrics);
+      }
+      const jLast = jPath[jPath.length - 1];
+      const jTraveled = shortHook ? pathLength(jPath) : traveled;
+      const turn = turnAngleDeg(jPath);
+      const straight = Math.max(netDisplacement(jPath), 1e-4);
+      const curviness = jTraveled / straight;
       const shapeValid = shapeReason === null;
-      const consistency = verticalDirectionConsistency(smoothed);
+      const consistency = verticalDirectionConsistency(jPath);
       const reason = shapeReason ||
         (turn < CONFIG.J_TURN_ANGLE_ON ? 'turn_insufficient' :
           curviness < CONFIG.J_CURVINESS_ON ? 'curviness_insufficient' :
-            Math.abs(last.y - smoothed[0].y) < CONFIG.J_MIN_VERTICAL_NET ? 'vertical_progress_insufficient' :
+            Math.abs(jLast.y - jPath[0].y) < CONFIG.J_MIN_VERTICAL_NET ? 'vertical_progress_insufficient' :
               consistency < CONFIG.J_MIN_VERTICAL_CONSISTENCY ? 'vertical_consistency_insufficient' : 'accepted');
       const validJ = reason === 'accepted';
       if (shapeMetrics) diagnostics.observeMotion({
         motionLetter: 'J', stemDescent: shapeMetrics.stemDescent,
         stemSide: shapeMetrics.stemSide, stemConsistency: shapeMetrics.stemConsistency,
+        stemEndIndex: shapeMetrics.stemEndIndex, troughIndex: shapeMetrics.troughIndex,
+        shortHook,
         maxStemRun: shapeMetrics.maxStemRun, motionSamples: this._motionBuffer.length,
         hookRise: shapeMetrics.hookRise, hookSide: shapeMetrics.hookSide,
-        turnDeg: turn, pathLength: traveled,
-        netVertical: last.y - smoothed[0].y, curviness,
+        turnDeg: turn, pathLength: jTraveled,
+        netVertical: jLast.y - jPath[0].y, curviness,
         motionDurationMs: last.t - smoothed[0].t, shapeValid, reason
       }, nowMs, validJ);
       // Geometria por segmentos e critérios globais devem concordar.
@@ -1295,6 +1345,7 @@ export class LibrasEngine extends EventTarget {
     this._motionReferenceScale = null;
     this._motionLastWristX = null;
     this._motionLastWristY = null;
+    this._motionLastWristAt = null;
     this._motionBaseMissing = false;
   }
 
