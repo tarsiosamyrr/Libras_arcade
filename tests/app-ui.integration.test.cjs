@@ -352,6 +352,209 @@ test('J com haste curta e retorno do gancho confirma em velocidades distintas', 
   }
 });
 
+test('J com haste inclinada em 15 graus confirma com retorno de gancho completo', async () => {
+  const r = await browserRuntime();
+  for (const mirror of [1, -1]) {
+    const rig = recognitionRig(r);
+    const path = J_PATH.map(([x, y]) => [mirror * (x + (y - .1) * Math.tan(Math.PI / 12)), y]);
+    rig.path('J', 100, 50, path);
+    assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+  }
+});
+
+test('J com sete amostras úteis e cadência irregular preserva a trajetória', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  const points = [0, 2, 4, 6, 8, 9, 10].map((index) => J_PATH[index]);
+  const times = [100, 160, 255, 310, 420, 490, 560];
+  points.forEach(([x, y], index) => rig.frame('J', times[index], x, y));
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+});
+
+test('seis amostras que apagam o gancho na suavização não bastam para confirmar J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  [0, 2, 4, 6, 8, 10].forEach((index, sample) => {
+    const [x, y] = J_PATH[index];
+    rig.frame('J', 100 + sample * 70, x, y);
+  });
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+});
+
+test('seis amostras com retorno ascendente e lateral nítido bastam para J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  rig.path('J', 100, 70, [[.2,.1],[.2,.2],[.25,.35],[.3,.55],[.5,.65],[.7,.25]]);
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+});
+
+test('diagnóstico distingue haste inclinada real de ausência de deslocamento', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'J', physicalHand: 'right',
+    orientation: 'oblique', distance: 'medium', mirrored: false });
+  const rig = recognitionRig(r);
+  const path = J_PATH.map(([x, y]) => [x + (y - .1) * Math.tan(Math.PI / 12), y]);
+  rig.path('J', 100, 50, path);
+  const samples = diag.read().events.filter((event) => event.type === 'motion_geometry');
+  assert.ok(samples.some((event) => event.stemDescent > .25 && event.stemSide > 0 &&
+    event.motionSamples >= 6));
+  assert.ok(samples.some((event) => event.reason === 'accepted'));
+});
+
+test('diagnóstico nomeia a rejeição geométrica sem zerar a haste observada', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'J', physicalHand: 'right',
+    orientation: 'oblique', distance: 'medium', mirrored: false });
+  const rig = recognitionRig(r);
+  const path = J_PATH.map(([x, y]) => [x + (y - .1) * 1.2, y]);
+  rig.path('J', 100, 50, path);
+  const samples = diag.read().events.filter((event) => event.type === 'motion_geometry');
+  assert.ok(samples.some((event) => event.reason === 'samples_insufficient'));
+  assert.ok(samples.some((event) => event.reason === 'stem_inclined' &&
+    event.stemDescent > .25 && event.stemSide > event.stemDescent &&
+    event.maxStemRun > 0));
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+});
+
+test('J continua o gancho após perda breve da pose-base I sem iniciar outro trajeto', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'J', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  const rig = recognitionRig(r);
+  J_PATH.forEach(([x, y], index) => {
+    const hand = pose('J', x, y);
+    if (index >= 8) hand[8] = { x: .5, y: .2, z: 0 }; // indicador abre; ponta do mindinho segue válida
+    r.clock.now = 100 + index * 50;
+    rig.engine.update({ landmarks: [hand] }, r.clock.now, 20);
+  });
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+  assert.ok(diag.read().events.some((event) => event.type === 'motion_base_lost' &&
+    event.reason === 'base_lost'));
+});
+
+test('diagnóstico marca histórico J obsoleto após perda prolongada da mão', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'J', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  const rig = recognitionRig(r);
+  rig.path('J', 100, 50, J_PATH.slice(0, 6));
+  rig.frame(null, 450);
+  rig.frame(null, 700);
+  assert.ok(diag.read().events.some((event) => event.type === 'motion_rejected' &&
+    event.reason === 'stale_history' && event.motionLetter === 'J'));
+  assert.equal(rig.engine._motionBuffer.length, 0);
+});
+
+test('perda de base sem trajetória iniciada não cria J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  J_PATH.forEach(([x, y], index) => {
+    const hand = pose('J', x, y);
+    hand[8] = { x: .5, y: .2, z: 0 };
+    r.clock.now = 100 + index * 50;
+    rig.engine.update({ landmarks: [hand] }, r.clock.now, 20);
+  });
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+});
+
+test('troca espacial abrupta da mão durante perda de base descarta o J pendente', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  J_PATH.forEach(([x, y], index) => {
+    const hand = pose('J', x, y);
+    if (index >= 8) {
+      hand[8] = { x: .5, y: .2, z: 0 };
+      for (const point of hand) point.x += .3;
+    }
+    r.clock.now = 100 + index * 50;
+    rig.engine.update({ landmarks: [hand] }, r.clock.now, 20);
+  });
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+});
+
+test('troca espacial abrupta com pose I ainda válida descarta a trajetória antiga', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  J_PATH.forEach(([x, y], index) => {
+    const hand = pose('J', x, y);
+    if (index >= 8) for (const point of hand) point.x += .3;
+    r.clock.now = 100 + index * 50;
+    rig.engine.update({ landmarks: [hand] }, r.clock.now, 20);
+  });
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+  assert.equal(rig.engine._motionBuffer.length < J_PATH.length - 1, true);
+});
+
+test('J tolera variação moderada de escala projetada sem mudar a intenção', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  J_PATH.forEach(([x, y], index) => {
+    const hand = pose('J', x, y);
+    const factor = index % 2 === 0 ? 1.08 : .92;
+    for (const point of hand) {
+      point.x = .5 + (point.x - .5) * factor;
+      point.y = .8 + (point.y - .8) * factor;
+    }
+    r.clock.now = 100 + index * 50;
+    rig.engine.update({ landmarks: [hand] }, r.clock.now, 20);
+  });
+  assert.deepEqual(rig.signs.map(([letter]) => letter), ['J']);
+});
+
+test('I imóvel com escala projetada variável não forma J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let index = 0; index < 40; index++) {
+    const hand = pose('J');
+    const factor = index % 2 === 0 ? 1.08 : .92;
+    for (const point of hand) {
+      point.x = .5 + (point.x - .5) * factor;
+      point.y = .8 + (point.y - .8) * factor;
+    }
+    r.clock.now = index * 50;
+    rig.engine.update({ landmarks: [hand] }, r.clock.now, 20);
+  }
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+  assert.equal(rig.signs.filter(([letter]) => letter === 'I').length, 1);
+});
+
+test('I com deslocamento apenas vertical não forma J', async () => {
+  const r = await browserRuntime();
+  const rig = recognitionRig(r);
+  for (let index = 0; index < 15; index++) {
+    rig.frame('J', 100 + index * 50, 0, Math.min(.7, index * .05));
+  }
+  assert.equal(rig.signs.some(([letter]) => letter === 'J'), false);
+});
+
+test('J inclinado é emitido, recebido e aceito no Treino e no Soletrar', async () => {
+  for (const mode of ['practice', 'word']) {
+    const r = await browserRuntime();
+    const game = new r.Game();
+    const engine = new r.LibrasEngine();
+    new r.UI(engine, game, new r.ForcaGame());
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.enable();
+    r.cards[mode === 'practice' ? 0 : 1].click();
+    game.target = mode === 'practice' ? 'J' : 'JA';
+    game.wordIndex = 0;
+    const path = J_PATH.map(([x, y]) => [x + (y - .1) * Math.tan(Math.PI / 12), y]);
+    path.forEach(([x, y], index) => {
+      r.clock.now = 100 + index * 50;
+      engine.update({ landmarks: [pose('J', x, y)] }, r.clock.now, 20);
+    });
+    const events = diag.read().events;
+    assert.equal(events.filter((event) => event.type === 'signconfirmed' && event.letter === 'J').length, 1);
+    assert.ok(events.some((event) => event.type === 'ui_received' && event.letter === 'J'));
+    assert.ok(events.some((event) => event.type === 'game_decision' &&
+      event.letter === 'J' && event.reason === 'accepted' && event.mode === mode));
+  }
+});
+
 test('intervalo sem frames descarta trajetória J incompleta', async () => {
   const r = await browserRuntime();
   const rig = recognitionRig(r);

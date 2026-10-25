@@ -16,7 +16,8 @@ const SAFE_FIELDS = new Set([
   'thumbIndexAngle', 'spreadIM', 'pointAngleIndex', 'pointAngleIM',
   'scoreA', 'scoreB', 'scoreC', 'scoreF', 'scoreG', 'scoreI', 'scoreK',
   'scoreO', 'scoreP', 'scoreT', 'scoreV', 'scoreY',
-  'stemDescent', 'hookRise', 'hookSide', 'turnDeg', 'pathLength',
+  'stemDescent', 'stemSide', 'stemConsistency', 'maxStemRun',
+  'hookRise', 'hookSide', 'turnDeg', 'pathLength',
   'netVertical', 'curviness', 'motionDurationMs', 'shapeValid'
 ]);
 
@@ -29,6 +30,7 @@ class RecognitionDiagnostics {
     this._lastSampleAt = -Infinity;
     this._lastSampleKey = null;
     this._lastMotionSampleAt = -Infinity;
+    this._lastMotionReason = null;
     this._mode = null;
     this._screen = 'home';
     this._calibration = null;
@@ -79,6 +81,7 @@ class RecognitionDiagnostics {
     this._lastSampleAt = -Infinity;
     this._lastSampleKey = null;
     this._lastMotionSampleAt = -Infinity;
+    this._lastMotionReason = null;
     this._calibration = null;
   }
 
@@ -118,8 +121,10 @@ class RecognitionDiagnostics {
 
   /** Amostra apenas a geometria escalar da trajetória J na captura rotulada. */
   observeMotion(details, at, force = false) {
-    if (!this._calibration || (!force && at - this._lastMotionSampleAt < SAMPLE_MS)) return;
+    if (!this._calibration || (!force && details.reason === this._lastMotionReason &&
+        at - this._lastMotionSampleAt < SAMPLE_MS)) return;
     this._lastMotionSampleAt = at;
+    this._lastMotionReason = details.reason;
     this.record('motion_geometry', details, at);
   }
 

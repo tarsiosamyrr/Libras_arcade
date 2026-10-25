@@ -112,8 +112,7 @@ export const CONFIG = {
   MOTION_ANCHOR_STILL_SPAN: 0.03,  // ignora amostras estacionárias anteriores ao início do trajeto
   J_TURN_ANGLE_ON: 35,             // graus de curva mínima no trajeto p/ reconhecer o gancho do J
   J_CURVINESS_ON: 1.15,            // trajeto/deslocamento-reto mínimo p/ considerar "curvo"
-  J_STEM_MIN_STEPS: 3,            // passos consecutivos de descida na trajetória
-  J_STEM_MAX_LATERAL_RATIO: 0.25, // deriva lateral máxima da haste em relação à descida
+  J_STEM_MAX_LATERAL_RATIO: 1,    // no segmento, a descida deve dominar a deriva lateral
   J_HOOK_MIN_RISE: 0.03,          // retorno na fronteira do raio de pose estacionária
   J_HOOK_MIN_SIDE: 0.06,          // avanço lateral do retorno; mesmos pisos da intenção dinâmica
   J_MIN_VERTICAL_NET: 0.10,       // avanço vertical líquido mínimo do gancho, na escala da mão
@@ -661,31 +660,37 @@ function verticalDirectionConsistency(pts) {
   return total > 0 ? Math.max(positive, negative) / total : 0;
 }
 
-/** Exige haste e retorno lateral ascendente nessa ordem, ignorando a pose parada inicial. */
-function hasJStemAndHook(pts, metrics = null) {
-  let steps = 0;
-  let stemEnd = -1;
+/** Segmenta J pelo ponto mais baixo. Retorna a condição que falhou, ou null.
+ * Descida e desvio são deslocamentos líquidos normalizados; ruído entre frames
+ * não precisa formar três passos consecutivos. O retorno vem depois da haste.
+ */
+function jShapeRejection(pts, metrics = null) {
+  let trough = 0;
   for (let i = 1; i < pts.length; i++) {
-    const dx = pts[i].x - pts[i - 1].x;
-    const dy = pts[i].y - pts[i - 1].y;
-    steps = dy > 0 && Math.abs(dx) <= dy * CONFIG.J_STEM_MAX_LATERAL_RATIO
-      ? steps + 1 : 0;
-    if (steps >= CONFIG.J_STEM_MIN_STEPS) { stemEnd = i; break; }
-  }
-  if (stemEnd < 0) {
-    if (metrics) { metrics.stemDescent = 0; metrics.hookRise = 0; metrics.hookSide = 0; }
-    return false;
-  }
-  if (metrics) metrics.stemDescent = pts[stemEnd].y - pts[stemEnd - CONFIG.J_STEM_MIN_STEPS].y;
-  let trough = stemEnd;
-  for (let i = stemEnd + 1; i < pts.length; i++) {
     if (pts[i].y > pts[trough].y) trough = i;
   }
-  const last = pts[pts.length - 1];
+  const start = pts[0], last = pts[pts.length - 1];
+  const stemDescent = pts[trough].y - start.y;
+  const stemSide = Math.abs(pts[trough].x - start.x);
   const hookRise = pts[trough].y - last.y;
   const hookSide = Math.abs(last.x - pts[trough].x);
-  if (metrics) { metrics.hookRise = Math.max(0, hookRise); metrics.hookSide = hookSide; }
-  return hookRise >= CONFIG.J_HOOK_MIN_RISE && hookSide >= CONFIG.J_HOOK_MIN_SIDE;
+  let down = 0, up = 0, run = 0, maxStemRun = 0;
+  for (let i = 1; i <= trough; i++) {
+    const dy = pts[i].y - pts[i - 1].y;
+    if (dy > 0) { down += dy; run++; maxStemRun = Math.max(maxStemRun, run); }
+    else { up -= dy; run = 0; }
+  }
+  if (metrics) Object.assign(metrics, {
+    stemDescent, stemSide, hookRise, hookSide, maxStemRun,
+    stemConsistency: down + up > 0 ? down / (down + up) : 0
+  });
+  if (stemDescent < CONFIG.MOTION_MIN_SPAN) return 'stem_insufficient';
+  if (stemSide > stemDescent * CONFIG.J_STEM_MAX_LATERAL_RATIO) return 'stem_inclined';
+  if (up > 0 && down / (down + up) < CONFIG.J_MIN_VERTICAL_CONSISTENCY) return 'stem_incoherent';
+  if (hookRise <= 0) return 'hook_absent';
+  if (hookRise < CONFIG.J_HOOK_MIN_RISE) return 'hook_rise_short';
+  if (hookSide < CONFIG.J_HOOK_MIN_SIDE) return 'hook_lateral_short';
+  return null;
 }
 
 /** Exige três traços alternados, com a descida/subida do meio no sentido da progressão total. */
@@ -764,6 +769,10 @@ export class LibrasEngine extends EventTarget {
     this._motionRejectStart = null;
     this._motionRejectX = 0;
     this._motionRejectY = 0;
+    this._motionReferenceScale = null;
+    this._motionLastWristX = null;
+    this._motionLastWristY = null;
+    this._motionBaseMissing = false;
 
     // buffer do gesto de navegação (deslizar a mão da esquerda pra direita)
     this._navBuffer = [];
@@ -811,6 +820,10 @@ export class LibrasEngine extends EventTarget {
       // Uma falha breve da mão pode ocorrer no meio de J/Z. A janela de graça
       // preserva só a trajetória ativa; resetTracking() sempre limpa a sessão.
       if (this._motionLastBaseAt === null || nowMs - this._motionLastBaseAt > CONFIG.MOTION_BASE_GRACE_MS) {
+        if (diagnostics.enabled && this._motionKey) diagnostics.record('motion_rejected', {
+          motionLetter: this._motionKey, motionSamples: this._motionBuffer.length,
+          reason: 'stale_history'
+        }, nowMs);
         this._resetMotion();
       }
       this._advanceConfirmation(null, nowMs);
@@ -1064,7 +1077,13 @@ export class LibrasEngine extends EventTarget {
     // Um intervalo sem callbacks também torna o trajeto antigo obsoleto,
     // mesmo se a mesma pose-base reaparecer no frame seguinte.
     if (this._motionLastBaseAt !== null &&
-        nowMs - this._motionLastBaseAt > CONFIG.MOTION_BASE_GRACE_MS) this._resetMotion();
+        nowMs - this._motionLastBaseAt > CONFIG.MOTION_BASE_GRACE_MS) {
+      if (diagnostics.enabled) diagnostics.record('motion_rejected', {
+        motionLetter: this._motionKey, motionSamples: this._motionBuffer.length,
+        reason: 'stale_history'
+      }, nowMs);
+      this._resetMotion();
+    }
     const pinkyBase = isPinkyUpBase(f);
     const indexBase = !pinkyBase && isIndexUpBase(f);
     const activeKey = pinkyBase ? 'J' : (indexBase ? 'Z' : null);
@@ -1104,10 +1123,46 @@ export class LibrasEngine extends EventTarget {
       this._motionBuffer = [];
       this._motionInProgress = false;
       this._motionLastIntentAt = null;
+      this._motionReferenceScale = scale;
+      this._motionBaseMissing = false;
     }
 
-    if (activeKey) {
-      const point = { x: tip.x / scale, y: tip.y / scale, t: nowMs };
+    // Só um J já em andamento pode continuar durante perda breve da pose I.
+    // O pulso limita saltos entre detecções; numHands:1 não dá identidade física.
+    const continuingJ = !activeKey && key === 'J' && this._motionInProgress;
+    if (!activeKey && key === 'J' && !continuingJ) return null;
+    const wrist = key === 'J' ? lm[LM.WRIST] : null;
+    let wristX = 0, wristY = 0;
+    if (key === 'J') {
+      wristX = wrist.x / this._motionReferenceScale;
+      wristY = wrist.y / this._motionReferenceScale;
+      if (this._motionBuffer.length > 0 &&
+          Math.hypot(wristX - this._motionLastWristX,
+          wristY - this._motionLastWristY) > CONFIG.MOTION_MIN_SPAN) {
+        if (diagnostics.enabled) diagnostics.record('motion_rejected', {
+          motionLetter: 'J', motionSamples: this._motionBuffer.length,
+          reason: 'tracking_discontinuity'
+        }, nowMs);
+        this._resetMotion();
+        return null;
+      }
+      if (continuingJ && !this._motionBaseMissing) {
+        this._motionBaseMissing = true;
+        if (diagnostics.enabled) diagnostics.record('motion_base_lost', {
+          motionLetter: 'J', motionSamples: this._motionBuffer.length, reason: 'base_lost'
+        }, nowMs);
+      }
+      if (activeKey) this._motionBaseMissing = false;
+      this._motionLastWristX = wristX;
+      this._motionLastWristY = wristY;
+    }
+    if (activeKey || continuingJ) {
+      // Referencial J: movimento do pulso na escala inicial + articulação da
+      // ponta na escala corrente. Remove zoom sem apagar a translação da mão.
+      const point = key === 'J'
+        ? { x: wristX + (tip.x - wrist.x) / scale,
+          y: wristY + (tip.y - wrist.y) / scale, t: nowMs }
+        : { x: tip.x / scale, y: tip.y / scale, t: nowMs };
       const anchor = this._motionBuffer[0];
       if (this._motionLastIntentAt === null && anchor &&
           Math.hypot(point.x - anchor.x, point.y - anchor.y) < CONFIG.MOTION_ANCHOR_STILL_SPAN) {
@@ -1174,28 +1229,44 @@ export class LibrasEngine extends EventTarget {
       this.state.holdProgress = spanProgress;
     }
 
-    if (!this._motionInProgress || this._motionBuffer.length < CONFIG.MOTION_MIN_SAMPLES) return null;
-    if (traveled < CONFIG.MOTION_MIN_SPAN) return null;
+    if (!this._motionInProgress || this._motionBuffer.length < CONFIG.MOTION_MIN_SAMPLES ||
+        traveled < CONFIG.MOTION_MIN_SPAN) {
+      if (key === 'J' && diagnostics.calibrationActive) diagnostics.observeMotion({
+        motionLetter: 'J', motionSamples: this._motionBuffer.length,
+        pathLength: traveled, motionDurationMs: last.t - smoothed[0].t,
+        turnDeg: turnAngleDeg(smoothed), netVertical: last.y - smoothed[0].y,
+        curviness: traveled / Math.max(netDisplacement(smoothed), 1e-4),
+        reason: !this._motionInProgress ? 'intent_missing' :
+          this._motionBuffer.length < CONFIG.MOTION_MIN_SAMPLES
+            ? 'samples_insufficient' : 'path_short'
+      }, nowMs);
+      return null;
+    }
 
     if (key === 'J') {
       const turn = turnAngleDeg(smoothed);
       const straight = Math.max(netDisplacement(smoothed), 1e-4);
       const curviness = traveled / straight;
       const shapeMetrics = diagnostics.calibrationActive ? {} : null;
-      const shapeValid = hasJStemAndHook(smoothed, shapeMetrics);
-      const validJ = shapeValid && turn >= CONFIG.J_TURN_ANGLE_ON &&
-        curviness >= CONFIG.J_CURVINESS_ON &&
-        Math.abs(last.y - smoothed[0].y) >= CONFIG.J_MIN_VERTICAL_NET &&
-        verticalDirectionConsistency(smoothed) >= CONFIG.J_MIN_VERTICAL_CONSISTENCY;
+      const shapeReason = jShapeRejection(smoothed, shapeMetrics);
+      const shapeValid = shapeReason === null;
+      const consistency = verticalDirectionConsistency(smoothed);
+      const reason = shapeReason ||
+        (turn < CONFIG.J_TURN_ANGLE_ON ? 'turn_insufficient' :
+          curviness < CONFIG.J_CURVINESS_ON ? 'curviness_insufficient' :
+            Math.abs(last.y - smoothed[0].y) < CONFIG.J_MIN_VERTICAL_NET ? 'vertical_progress_insufficient' :
+              consistency < CONFIG.J_MIN_VERTICAL_CONSISTENCY ? 'vertical_consistency_insufficient' : 'accepted');
+      const validJ = reason === 'accepted';
       if (shapeMetrics) diagnostics.observeMotion({
         motionLetter: 'J', stemDescent: shapeMetrics.stemDescent,
+        stemSide: shapeMetrics.stemSide, stemConsistency: shapeMetrics.stemConsistency,
+        maxStemRun: shapeMetrics.maxStemRun, motionSamples: this._motionBuffer.length,
         hookRise: shapeMetrics.hookRise, hookSide: shapeMetrics.hookSide,
         turnDeg: turn, pathLength: traveled,
         netVertical: last.y - smoothed[0].y, curviness,
-        motionDurationMs: last.t - smoothed[0].t, shapeValid
+        motionDurationMs: last.t - smoothed[0].t, shapeValid, reason
       }, nowMs, validJ);
-      // Curvatura global aceita até uma haste com desvio lateral reto. Exigir
-      // retorno ascendente depois da haste sem contar a pose de preparação.
+      // Geometria por segmentos e critérios globais devem concordar.
       if (validJ) {
         this.state.holdProgress = 1;
         this._resetMotion();
@@ -1221,6 +1292,10 @@ export class LibrasEngine extends EventTarget {
     this._motionRejectedKey = null;
     this._motionProgress = 0;
     this._motionRejectStart = null;
+    this._motionReferenceScale = null;
+    this._motionLastWristX = null;
+    this._motionLastWristY = null;
+    this._motionBaseMissing = false;
   }
 
   /** Rastreia o pulso de qualquer mão detectada em busca do gesto de
