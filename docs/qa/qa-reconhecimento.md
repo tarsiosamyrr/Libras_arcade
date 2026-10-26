@@ -1,4 +1,8 @@
-# QA do reconhecimento — FASE 03.3A a 03.3B-2A.1
+# QA do reconhecimento — FASE 03.3A a 03.3B-2B
+
+**Atualização 03.3B-2B:** duas janelas antigas de R confirmaram R, mas a direita alternou frequentemente com U; não são tentativas independentes. O cruzamento de R agora requer inversão das pontas no eixo local da palma e proximidade 3D, preservando U nos testes sintéticos. E/M não mudaram de regra por falta de capturas geométricas legítimas e rotuladas; a calibração expõe seus escores e concorrentes para coleta. Nenhuma dessas letras foi homologada após a mudança em webcam. [Decisão e limites](../../specs/changes/2026-10-25-fase-033b2b-emr.md).
+
+**Verificação pré-checkpoint de R:** duas fixtures adicionais reproduziram U confirmado em R cruzado com `spreadIM≈0,258` e rotação 3D de 55°. A regra passou a comparar a profundidade no encontro projetado dos segmentos dos dedos, mantendo a ordem das pontas no eixo 3D e a visibilidade do eixo em 2D. As fixtures passam até `spreadIM≈0,327` e 55°; a 60°/65° a disputa com U persiste. Esses ângulos não são limites homologados de webcam.
 
 **Atualização 03.3B-2A.1:** o [diagnóstico das 12 capturas escalares](Libras_Arcade_Diagnostico_OA_033B2A1_2026-10-25.md) fundamenta um desconto local em A quando há pinça polegar–médio; O e P/V/K mantêm as regras da 2A. Rótulos e primeira confirmação agora ficam em `read().calibration`, fora do anel de 120 eventos. Ainda faltam A lateral real e orientação confiável das capturas O 9/10 para homologar. O protocolo focalizado está no relatório.
 
@@ -16,7 +20,7 @@
 
 - **Código**: condição verificável nos módulos. **Sintético**: comportamento reproduzido por fixtures/relógio, sem estimar precisão de webcam. **Relato**: observação do usuário com webcam, sem contagem padronizada. **Pendente**: sem trilha suficiente para localizar a perda.
 - “Detectar” abaixo significa exibir uma candidata estática; não prova que passou pelo limiar, sustentou 600 ms ou gerou `signconfirmed`. “Confirmar” significa emissão desse evento, ainda sujeita à decisão do modo.
-- Todas as regras estáticas usam a média simples de seus componentes `fuzzyOn`, `fuzzyOff` ou `fuzzyBand`, cada um entre 0 e 1. A maior média vence, sem margem mínima; empate conserva a regra anterior na ordem de `RULES`. `MIN_SCORE = 0,55` decide a elegibilidade. O hold exige 600 ms; cooldown 900 ms e rearmamento exigem liberação por 250 ms ou mudança de outra letra por 300 ms. Esses tempos não foram recalibrados aqui.
+- As regras estáticas usam componentes `fuzzyOn`, `fuzzyOff` ou `fuzzyBand`, cada um entre 0 e 1; desde a 2B, R multiplica sua média por um fator de cruzamento. O maior escore vence, sem margem mínima; empate conserva a regra anterior na ordem de `RULES`. `MIN_SCORE = 0,55` decide a elegibilidade. O hold exige 600 ms; cooldown 900 ms e rearmamento exigem liberação por 250 ms ou mudança de outra letra por 300 ms. Esses tempos não foram recalibrados aqui.
 
 ## Matriz A–Z de validação
 
@@ -41,7 +45,7 @@
 | O | Sim | Estático | Captura 7 correta; capturas 8–10 alternaram ou perderam para A | Empates e A incorreto são anteriores ao desconto da 2A.1; orientação executada em 9/10 incerta | JSON escalar; diagnóstico retrospectivo | Repetir O/A por mão e orientação real com controle A lateral |
 | P | Sim | Estático | P foi segunda candidata em frames do Soletrar | Duas decisões V→P incorretas no buffer | Resumo real; código | Medir P/V/K com mão para baixo e variantes validadas |
 | Q | Sim | Estático | Detectada anteriormente | Pode não confirmar | Relato anterior | Limiar, hold, Q/G por orientação |
-| R | Sim | Estático | Não identificada | Sem confirmação confiável relatada | Relato recente | Cruzamento R/U/H/V e oclusão |
+| R | Sim | Estático | Confirmada em duas janelas antigas, com alternância R/U na direita | Regra nova passou em fixtures; webcam posterior pendente | JSON escalar anterior; testes sintéticos | Cruzamento verdadeiro R/U nas duas mãos, projeção lateral e oclusão |
 | S | Sim | Estático | Não identificada | Sem confirmação confiável relatada | Relato recente | Escores S/E/M/A/O |
 | T | Sim | Estático | Competiu com G em frames do ensaio | Alternância pode reiniciar hold | Resumo real; código | Escores G/T e orientação por tentativa |
 | U | Sim | Estático | Sem relato individual recente | Não homologada | Cadastro/código | U/R/H com mão vertical/lateral |
@@ -62,7 +66,7 @@ Os valores abaixo são limiares de **componentes**, não limites de decisão da 
 | M | `curl` de indicador/médio/anelar fechados; mindinho fechado (`ext` ≤0,38); `thumbPinkyMcp` próximo ≤0,28. | N/T/S/A compartilham punho; posição fina do polegar pode oscilar. |
 | N | `curl` de indicador/médio fechados; anelar/mindinho fechados; `thumbRingMcp` ≤0,28 e `thumbPinkyMcp` ≥0,50. | M/T/S/A; dois testes do polegar podem sofrer oclusão. |
 | T | `curl` de médio/anelar fechados, mindinho fechado e `thumbBetweenIM` ≤0,28. | N/M/S/A; G/T é relato, não empate demonstrado. Regra não exige indicador curvado. |
-| R | Indicador/médio estendidos, anelar/mindinho fechados; `crossIM` ≤0,22. | U exige `crossIM` ≥0,42, H usa direção lateral, V separação; R não impõe orientação. |
+| R | Indicador/médio estendidos, anelar/mindinho fechados; ordem 3D das pontas `crossOrderIM`, separação no encontro projetado dos segmentos `crossDepthIM` e eixo projetado `palmAxisIM` multiplicam a média desses quatro componentes. Sem encontro projetado, R recebe zero. | U conserva `crossIM` ≥0,42, H usa direção lateral, V separação. Vista lateral e oclusão podem reduzir a confiança do cruzamento. |
 | U | Dois dedos estendidos/juntos (`spreadIM` ≤0,22), anelar/mindinho fechados, `crossIM` ≥0,42 e `uprightScore`. | H troca por direção lateral; R por cruzamento; `uprightScore = 1 - sidewaysScore`, portanto também aceita direção para baixo. |
 | V | Dois dedos estendidos/separados (`spreadIM` ≥0,34), demais fechados, `thumbBetweenIM` afastado ≥0,50. | K/P acrescentam direção cima/baixo como um entre sete componentes. Desde a 2A, V sofre desconto de até 0,20 somente com polegar parcialmente próximo e direção descendente; sem polegar próximo, V invertido ainda pode pontuar 1. Exige validação pedagógica e webcam. |
 | H | Dois dedos estendidos/juntos, demais fechados, `sidewaysScore(pointAngleIM)`. | U/R; direção lateral tem platô até 30° e zera a 90° de distância do alvo. |

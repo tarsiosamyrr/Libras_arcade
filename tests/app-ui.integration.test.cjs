@@ -124,6 +124,44 @@ function trueAPose({ mirror = false, width = 1, scale = 1, depth = 0 } = {}) {
   }));
 }
 
+// Dois dedos retos se cruzam na projeção local da palma. A separação em Z
+// permite distinguir contato plausível de uma sobreposição apenas na imagem.
+function crossedRPose({ mirror = false, angle = 0, yaw = 0, scale = 1, parallel = false,
+  depthGap = 0, fingerDepthGap = 0, jitter = 0 } = {}) {
+  const hand = Array.from({ length: 21 }, () => ({ x: .5, y: .7, z: 0 }));
+  hand[0] = { x: .5, y: 1, z: 0 };
+  hand[5] = { x: .43, y: .65, z: 0 };
+  hand[6] = { x: parallel ? .44 : .45, y: .51, z: 0 };
+  hand[7] = { x: parallel ? .45 : .49, y: .45, z: 0 };
+  hand[8] = { x: (parallel ? .46 : .53) + jitter, y: .39, z: depthGap / 2 };
+  hand[9] = { x: .57, y: .65, z: 0 };
+  hand[10] = { x: parallel ? .56 : .55, y: .51, z: 0 };
+  hand[11] = { x: parallel ? .55 : .51, y: .45, z: 0 };
+  hand[12] = { x: (parallel ? .54 : .47) - jitter, y: .39, z: -depthGap / 2 };
+  for (const [mcp, pip, tip, x] of [[13, 14, 16, .68], [17, 18, 20, .78]]) {
+    hand[mcp] = { x, y: .65, z: 0 };
+    hand[pip] = { x, y: .53, z: 0 };
+    hand[tip] = { x, y: .65, z: 0 };
+  }
+  hand[4] = { x: .5, y: .82, z: 0 };
+  // Profundidade contínua em cada dedo cruzado; depthGap altera só as pontas
+  // e continua representando a sobreposição projetada do controle negativo.
+  for (const [index, fraction] of [[6, .25], [7, .35], [8, .5]]) {
+    hand[index].z += fingerDepthGap * fraction;
+  }
+  for (const [index, fraction] of [[10, .25], [11, .35], [12, .5]]) {
+    hand[index].z -= fingerDepthGap * fraction;
+  }
+  return hand.map((point) => {
+    const dx = (point.x - .5) * scale, dy = (point.y - 1) * scale;
+    const x = .5 + dx * Math.cos(angle) - dy * Math.sin(angle);
+    const y = 1 + dx * Math.sin(angle) + dy * Math.cos(angle);
+    const side = (x - .5) * Math.cos(yaw) + point.z * scale * Math.sin(yaw);
+    const depth = point.z * scale * Math.cos(yaw) - (x - .5) * Math.sin(yaw);
+    return { x: mirror ? .5 - side : .5 + side, y, z: depth };
+  });
+}
+
 test('cooldown confirma gesto estático uma vez e mantém a pose prolongada bloqueada', async () => {
   const r = await browserRuntime();
   const { engine, signs, sample } = temporalRig(r);
@@ -2645,6 +2683,158 @@ test('controle V/K ascendente mantém V sem desconto e confirma K nas duas proje
     assert.ok(sample.scoreK > sample.scoreV);
     assert.deepEqual(signs, ['K']);
     diag.stopCalibration();
+  }
+});
+
+test('R reto e cruzado supera U sob espelho, rotação e escala', async () => {
+  for (const mirror of [false, true]) {
+    for (const [angle, scale] of [[0, 1], [.12, .85], [-.10, 1.15]]) {
+      const r = await browserRuntime();
+      const diag = r.window.librasArcadeDiagnostics;
+      diag.startCalibration({ intendedLetter: 'R', physicalHand: mirror ? 'left' : 'right',
+        orientation: 'front', distance: 'medium', mirrored: mirror });
+      const engine = new r.LibrasEngine();
+      const signs = [];
+      engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+      for (let at = 100; at <= 750; at += 50) {
+        r.clock.now = at;
+        engine.update({ landmarks: [crossedRPose({ mirror, angle, scale,
+          jitter: at % 100 ? .002 : -.002 })] }, at, 20);
+      }
+      const sample = diag.read().events.find((event) => event.type === 'recognition');
+      assert.equal(sample.candidate, 'R', `espelho=${mirror}, ângulo=${angle}, escala=${scale}`);
+      assert.ok(sample.scoreR > sample.scoreU);
+      assert.ok(sample.crossOrderIM > 0);
+      assert.deepEqual(signs, ['R']);
+    }
+  }
+});
+
+test('U paralelo e sobreposição distante em profundidade não confirmam R', async () => {
+  for (const hand of [crossedRPose({ parallel: true }),
+    crossedRPose({ parallel: true, angle: .8 }),
+    crossedRPose({ parallel: true, yaw: 55 * Math.PI / 180 }),
+    crossedRPose({ depthGap: .5 }),
+    crossedRPose({ depthGap: .5, angle: .8 }),
+    crossedRPose({ fingerDepthGap: .18 })]) {
+    const r = await browserRuntime();
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.startCalibration({ intendedLetter: 'U', physicalHand: 'right',
+      orientation: 'front', distance: 'medium', mirrored: false });
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    for (let at = 100; at <= 750; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+    assert.equal(signs.includes('R'), false);
+    const sample = diag.read().events.find((event) => event.type === 'recognition');
+    assert.ok(sample.scoreR < .55, `R não deve ser elegível sem cruzamento confiável: ${sample.scoreR}`);
+    assert.ok(sample.crossDepthIM === null || sample.crossDepthIM > .34);
+  }
+});
+
+test('R cruzado com profundidade gradual atravessa a fronteira de spreadIM', async () => {
+  for (const fingerDepthGap of [0, .05, .07, .085, .10]) {
+    const r = await browserRuntime();
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.startCalibration({ intendedLetter: 'R', physicalHand: 'right',
+      orientation: 'front', distance: 'medium', mirrored: false });
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    for (let at = 100; at <= 750; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [crossedRPose({ fingerDepthGap })] }, at, 20);
+    }
+    const sample = diag.read().events.find((event) => event.type === 'recognition');
+    assert.ok(sample.crossOrderIM > 0);
+    assert.ok(Number.isFinite(sample.crossDepthIM));
+    if (fingerDepthGap >= .07) assert.ok(sample.spreadIM > .22 && sample.spreadIM < .34);
+    assert.ok(sample.crossDepthIM < .22);
+    assert.ok(sample.scoreR > sample.scoreU);
+    assert.deepEqual(signs, ['R']);
+  }
+});
+
+test('R cruzado sob projeção lateral 3D conserva cruzamento observável', async () => {
+  let frontalAxis;
+  for (const [yawDegrees, mirror] of [[0, false], [45, false], [55, false],
+    [55, true], [60, false], [65, false], [80, false]]) {
+    const r = await browserRuntime();
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.startCalibration({ intendedLetter: 'R', physicalHand: mirror ? 'left' : 'right',
+      orientation: yawDegrees === 0 ? 'front' : yawDegrees >= 70 ? 'side' : 'oblique',
+      distance: 'medium', mirrored: mirror });
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    const hand = crossedRPose({ yaw: yawDegrees * Math.PI / 180, mirror });
+    for (let at = 100; at <= 750; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+    const sample = diag.read().events.find((event) => event.type === 'recognition');
+    assert.ok(sample.crossOrderIM > 0);
+    if (yawDegrees === 0) frontalAxis = sample.palmAxisIM;
+    else assert.ok(sample.palmAxisIM < frontalAxis);
+    if (yawDegrees <= 55) {
+      assert.ok(sample.scoreR > sample.scoreU);
+      assert.deepEqual(signs, ['R']);
+    }
+    if (yawDegrees === 80) assert.ok(sample.scoreR < .55);
+  }
+});
+
+test('calibração E/M/R expõe concorrentes e escalares sem landmarks', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  const engine = new r.LibrasEngine();
+  diag.startCalibration({ intendedLetter: 'R', physicalHand: 'left',
+    orientation: 'oblique', distance: 'medium', mirrored: true });
+  engine.update({ landmarks: [crossedRPose({ mirror: true })] }, 100, 20);
+  const sample = diag.read().events.find((event) => event.type === 'recognition');
+  for (const field of ['scoreE', 'scoreM', 'scoreN', 'scoreR', 'scoreS', 'scoreU',
+    'scoreA', 'scoreO', 'crossIM', 'crossOrderIM', 'crossDepthIM', 'palmAxisIM', 'thumbPinkyMcp',
+    'thumbRingMcp', 'thumbIndexMcp', 'thumbMiddleMcp', 'thumbRingPinch',
+    'tipPalmMean', 'thumbFingerDepth', 'tipDepthIM']) {
+    assert.ok(Number.isFinite(sample[field]), field);
+  }
+  assert.equal(diag.read().calibration.physicalHand, 'left');
+  assert.equal(diag.read().events.some((event) => 'landmarks' in event), false);
+});
+
+test('R cruzado chega ao Treino e Soletrar uma vez após U incorreto e rearmamento', async () => {
+  for (const mode of ['practice', 'word']) {
+    const r = await browserRuntime();
+    const game = new r.Game();
+    const engine = new r.LibrasEngine();
+    new r.UI(engine, game, new r.ForcaGame());
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.enable();
+    r.cards[mode === 'practice' ? 0 : 1].click();
+    game.target = mode === 'practice' ? 'R' : 'RA';
+    if (mode === 'word') game.wordIndex = 0;
+    const frame = (at, hand) => {
+      r.clock.now = at;
+      engine.update({ landmarks: hand ? [hand] : [] }, at, 20);
+    };
+    for (let at = 100; at <= 750; at += 50) frame(at, crossedRPose({ parallel: true }));
+    for (let at = 800; at <= 1100; at += 50) frame(at, null);
+    for (let at = 1150; at <= 2750; at += 50) frame(at,
+      crossedRPose({ jitter: at % 100 ? .002 : -.002 }));
+    const events = diag.read().events;
+    const confirmed = events.filter((event) => event.type === 'signconfirmed');
+    assert.deepEqual(Array.from(confirmed, (event) => event.letter), ['U', 'R']);
+    assert.ok(events.some((event) => event.type === 'recognition' &&
+      event.candidate === 'R' && event.phase === 'STABILIZING'));
+    assert.ok(events.some((event) => event.type === 'ui_received' && event.letter === 'R'));
+    assert.ok(events.some((event) => event.type === 'game_decision' &&
+      event.letter === 'U' && event.expected === 'R' && event.reason === 'wrong_letter'));
+    assert.ok(events.some((event) => event.type === 'game_decision' &&
+      event.letter === 'R' && event.reason === 'accepted' && event.mode === mode));
+    if (mode === 'word') assert.equal(game.wordIndex, 1);
   }
 });
 

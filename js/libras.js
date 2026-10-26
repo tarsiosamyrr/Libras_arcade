@@ -267,8 +267,7 @@ function extractFeatures(lm) {
   const imMidY = (lm[LM.INDEX_PIP].y + lm[LM.MIDDLE_PIP].y) / 2;
   const thumbBetweenIM = dist(lm[LM.THUMB_TIP], { x: imMidX, y: imMidY }) / scale; // polegar entre ind/méd (K, P, T)
 
-  // pontas cruzadas (R): quando cruzados, a ponta do indicador fica perto
-  // da base do médio e vice-versa — a distância cruzada cai bastante.
+  // Distância ponta–PIP oposta, preservada para U; não comprova cruzamento de R.
   const crossIM = (dist(lm[LM.INDEX_TIP], lm[LM.MIDDLE_PIP]) + dist(lm[LM.MIDDLE_TIP], lm[LM.INDEX_PIP])) / 2 / scale;
 
   // ângulo interno entre polegar e indicador (rotation-invariant): ~90° em
@@ -297,6 +296,52 @@ function extractFeatures(lm) {
   };
 }
 
+const R_INDEX_SEGMENTS = [[LM.INDEX_MCP, LM.INDEX_PIP],
+  [LM.INDEX_PIP, LM.INDEX_DIP], [LM.INDEX_DIP, LM.INDEX_TIP]];
+const R_MIDDLE_SEGMENTS = [[LM.MIDDLE_MCP, LM.MIDDLE_PIP],
+  [LM.MIDDLE_PIP, LM.MIDDLE_DIP], [LM.MIDDLE_DIP, LM.MIDDLE_TIP]];
+
+/** Profundidade no encontro dos segmentos projetados; null quando não se cruzam. */
+function projectedCrossDepth(lm, scale) {
+  let closest = null;
+  for (const [startI, endI] of R_INDEX_SEGMENTS) {
+    const a = lm[startI], b = lm[endI];
+    const ix = b.x - a.x, iy = b.y - a.y;
+    for (const [startM, endM] of R_MIDDLE_SEGMENTS) {
+      const c = lm[startM], d = lm[endM];
+      const mx = d.x - c.x, my = d.y - c.y;
+      const determinant = ix * my - iy * mx;
+      if (Math.abs(determinant) < 1e-8) continue;
+      const cx = c.x - a.x, cy = c.y - a.y;
+      const alongI = (cx * my - cy * mx) / determinant;
+      const alongM = (cx * iy - cy * ix) / determinant;
+      if (alongI < 0 || alongI > 1 || alongM < 0 || alongM > 1) continue;
+      const depthI = (a.z ?? 0) + alongI * ((b.z ?? 0) - (a.z ?? 0));
+      const depthM = (c.z ?? 0) + alongM * ((d.z ?? 0) - (c.z ?? 0));
+      const depth = Math.abs(depthI - depthM) / scale;
+      if (closest === null || depth < closest) closest = depth;
+    }
+  }
+  return closest;
+}
+
+/** Ordem 3D das pontas e confiabilidade da projeção local da palma. */
+function crossingGeometry(lm, scale) {
+  const axisX = lm[LM.MIDDLE_MCP].x - lm[LM.INDEX_MCP].x;
+  const axisY = lm[LM.MIDDLE_MCP].y - lm[LM.INDEX_MCP].y;
+  const axisZ = (lm[LM.MIDDLE_MCP].z ?? 0) - (lm[LM.INDEX_MCP].z ?? 0);
+  const axisLength = Math.hypot(axisX, axisY, axisZ);
+  return {
+    palmAxisIM: Math.hypot(axisX, axisY) / scale,
+    crossOrderIM: axisLength === 0 ? 0 : (
+      (lm[LM.INDEX_TIP].x - lm[LM.MIDDLE_TIP].x) * axisX +
+      (lm[LM.INDEX_TIP].y - lm[LM.MIDDLE_TIP].y) * axisY +
+      ((lm[LM.INDEX_TIP].z ?? 0) - (lm[LM.MIDDLE_TIP].z ?? 0)) * axisZ
+    ) / (axisLength * scale),
+    crossDepthIM: projectedCrossDepth(lm, scale)
+  };
+}
+
 /** Medidas adicionais só na captura rotulada; área projetada não prova orientação 3D. */
 function calibrationGeometry(lm, scale) {
   const wrist = lm[LM.WRIST];
@@ -306,13 +351,27 @@ function calibrationGeometry(lm, scale) {
   const imTipY = (lm[LM.INDEX_TIP].y + lm[LM.MIDDLE_TIP].y) / 2;
   const imMcpX = (indexMcp.x + lm[LM.MIDDLE_MCP].x) / 2;
   const imMcpY = (indexMcp.y + lm[LM.MIDDLE_MCP].y) / 2;
+  const palmCenter = [LM.INDEX_MCP, LM.MIDDLE_MCP, LM.RING_MCP, LM.PINKY_MCP]
+    .reduce((sum, index) => ({
+      x: sum.x + lm[index].x / 4,
+      y: sum.y + lm[index].y / 4,
+      z: sum.z + (lm[index].z ?? 0) / 4
+    }), { x: 0, y: 0, z: 0 });
+  const fingerTips = [LM.INDEX_TIP, LM.MIDDLE_TIP, LM.RING_TIP, LM.PINKY_TIP];
   return {
     palmProjectedArea: Math.abs((indexMcp.x - wrist.x) * (pinkyMcp.y - wrist.y) -
       (indexMcp.y - wrist.y) * (pinkyMcp.x - wrist.x)) / (scale * scale),
     palmDepthSpan: Math.abs((indexMcp.z ?? 0) - (pinkyMcp.z ?? 0)) / scale,
     fingerAngleIM: vecAngleUpDeg(imTipX - imMcpX, imTipY - imMcpY),
     tipClusterIMR: (dist(lm[LM.INDEX_TIP], lm[LM.MIDDLE_TIP]) +
-      dist(lm[LM.MIDDLE_TIP], lm[LM.RING_TIP])) / (2 * scale)
+      dist(lm[LM.MIDDLE_TIP], lm[LM.RING_TIP])) / (2 * scale),
+    tipPalmMean: fingerTips.reduce((sum, index) => sum + dist(lm[index], palmCenter), 0) / (4 * scale),
+    thumbFingerDepth: ((lm[LM.THUMB_TIP].z ?? 0) - fingerTips.reduce((sum, index) =>
+      sum + (lm[index].z ?? 0), 0) / 4) / scale,
+    thumbIndexMcp: dist(lm[LM.THUMB_TIP], lm[LM.INDEX_MCP]) / scale,
+    thumbMiddleMcp: dist(lm[LM.THUMB_TIP], lm[LM.MIDDLE_MCP]) / scale,
+    thumbRingPinch: dist(lm[LM.THUMB_TIP], lm[LM.RING_TIP]) / scale,
+    tipDepthIM: Math.abs((lm[LM.INDEX_TIP].z ?? 0) - (lm[LM.MIDDLE_TIP].z ?? 0)) / scale
   };
 }
 
@@ -524,13 +583,18 @@ const RULES = {
       downScore(f.pointAngleIndex)
     );
   },
-  R(f) {
-    return avg(
+  R(f, geometry) {
+    // A separação no encontro dos segmentos permite pontas distantes entre si;
+    // a projeção sem cruzamento ou com profundidade distante não conta.
+    const crossing = fuzzyOn(geometry.crossOrderIM, 0, CONFIG.SPREAD_TOGETHER / 2) *
+      (geometry.crossDepthIM === null ? 0 :
+        fuzzyOff(geometry.crossDepthIM, CONFIG.SPREAD_TOGETHER, CONFIG.SPREAD_APART)) *
+      fuzzyOn(geometry.palmAxisIM, 0, CONFIG.SPREAD_TOGETHER);
+    return crossing * avg(
       fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.crossIM, CONFIG.CROSS_ON, CONFIG.CROSS_OFF)
+      fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON)
     );
   },
   S(f) {
@@ -561,12 +625,13 @@ const RULES = {
 };
 
 // Apenas durante calibração voluntária: concorrentes dos grupos em análise.
-const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'E', 'F', 'G', 'I', 'K', 'O', 'P', 'S', 'T', 'V', 'Y']);
+const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'E', 'F', 'G', 'I', 'K', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'Y']);
 const CALIBRATION_FEATURES = [
   'extIndex', 'extMiddle', 'extRing', 'extPinky',
   'curlIndex', 'curlMiddle', 'curlRing', 'curlPinky',
   'thumbOut', 'thumbAcross', 'thumbIndexPinch', 'thumbMiddlePinch',
-  'thumbBetweenIM', 'thumbIndexAngle', 'spreadIM', 'pointAngleIndex', 'pointAngleIM'
+  'thumbBetweenIM', 'thumbIndexAngle', 'spreadIM', 'pointAngleIndex', 'pointAngleIM',
+  'thumbPinkyMcp', 'thumbRingMcp', 'crossIM'
 ];
 
 // letras reconhecidas por FORMA ESTÁTICA (um frame só)
@@ -591,14 +656,14 @@ function isOpenHand(f) {
   return openness >= CONFIG.LEFT_HAND_OPEN_MIN;
 }
 
-function classify(features, includeRunnerUp = false, includeCalibration = false) {
+function classify(features, includeRunnerUp = false, includeCalibration = false, crossing = null) {
   let best = null;
   let bestScore = 0;
   let second = null;
   let secondScore = 0;
   const calibrationScores = includeCalibration ? {} : null;
   for (const letter of STATIC_LETTERS) {
-    const score = RULES[letter](features);
+    const score = RULES[letter](features, crossing);
     if (calibrationScores && CALIBRATION_RULES.has(letter)) calibrationScores[`score${letter}`] = score;
     if (score > bestScore) {
       if (includeRunnerUp) { second = best; secondScore = bestScore; }
@@ -894,7 +959,8 @@ export class LibrasEngine extends EventTarget {
     const rightLm = right.landmarks;
     const scale = handScale(rightLm);
     const features = extractFeatures(rightLm);
-    const ranking = classify(features, diagnostics.enabled, diagnostics.calibrationActive);
+    const crossing = crossingGeometry(rightLm, scale);
+    const ranking = classify(features, diagnostics.enabled, diagnostics.calibrationActive, crossing);
     const { letter, score } = ranking;
 
     this.state.features = features;
@@ -930,13 +996,13 @@ export class LibrasEngine extends EventTarget {
       this._advanceConfirmation(gateOpen ? this.state.letter : null, nowMs);
     }
 
-    if (diagnostics.enabled) this._traceFrame(nowMs, true, ranking, true, rightLm, scale);
+    if (diagnostics.enabled) this._traceFrame(nowMs, true, ranking, true, rightLm, scale, crossing);
     this._emit();
     return this.state;
   }
 
   /** Registra só decisões escalares; não retém features ou landmarks da mão. */
-  _traceFrame(nowMs, handPresent, ranking, landmarksValid = true, landmarks = null, scale = null) {
+  _traceFrame(nowMs, handPresent, ranking, landmarksValid = true, landmarks = null, scale = null, crossing = null) {
     const phase = this.state.recognitionPhase;
     const motionStatus = this._motionRejectedKey ? 'rejected' :
       this._motionNeedsSettle ? 'residual' :
@@ -967,6 +1033,7 @@ export class LibrasEngine extends EventTarget {
       for (const name of CALIBRATION_FEATURES) sample[name] = this.state.features[name];
       Object.assign(sample, ranking.calibrationScores);
       Object.assign(sample, calibrationGeometry(landmarks, scale));
+      Object.assign(sample, crossing);
     }
     diagnostics.observe(sample, nowMs);
   }

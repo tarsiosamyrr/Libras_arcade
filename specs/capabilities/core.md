@@ -3,7 +3,7 @@ id: core
 contract_status: confirmed
 implementation_status: partial
 last_verified: 2026-10-25
-last_verified_ref: working-tree-fase-033b2a1-automated
+last_verified_ref: working-tree-fase-033b2b-automated
 ---
 
 # Prática de datilologia nos três jogos
@@ -45,10 +45,14 @@ A FASE 03.3B-2A reduz V somente quando há evidência simultânea de polegar pr�
 
 Na FASE 03.3B-2A.1, o JSON escalar da homologação seguinte ficou disponível localmente. A pinça polegar–médio separou as janelas O das duas janelas A verdadeiras com mais consistência que área projetada da palma. A regra A passou a ser descontada pela faixa de pinça já usada em O, sem elevar o escore original e sem mudar O/P/V/K. Rótulos e primeira confirmação da captura voluntária permanecem em um resumo fora do anel de 120 eventos, apenas na memória da aba. O controle A lateral real e a verificação da orientação declarada nas capturas problemáticas faltam; a capacidade continua `partial` e a melhora com webcam após a alteração não foi homologada. [Decisão](../changes/2026-10-25-fase-033b2a1-oa.md).
 
+Na FASE 03.3B-2B, a regra R passou a exigir inversão projetada da ordem das pontas, proximidade 3D e um eixo de palma visível, além de extensão de indicador/médio e fechamento dos demais dedos. Testes sintéticos reproduziram R reto perdendo para U e R com 0,8 mesmo sem cruzamento; a mudança local passou nos controles de R/U e no teste diferencial de estado. E e M receberam apenas escalares e escores na calibração voluntária: faltam exemplos legítimos rotulados para separar E/S/A/O e M/N sem impor limiares arbitrários. N, S e U mantêm suas regras. O reconhecimento real continua `partial` até homologação em webcam e integração controlada das branches N/S. [Decisão e limites](../changes/2026-10-25-fase-033b2b-emr.md).
+
+Na verificação pré-checkpoint da 2B, duas fixtures revelaram falsos negativos de R com profundidade moderada e rotação 3D. A regra R passou a medir a ordem das pontas no eixo 3D dos MCPs e a distância entre os dedos no ponto de cruzamento de seus segmentos projetados, conservando o teste separado da visibilidade do eixo em 2D. Os limiares e a regra U ficaram iguais. Os testes sintéticos confirmam R até `spreadIM≈0,327` e rotação de 55°; a 60° e 65°, a competição com U permanece, e uma vista quase lateral não é obrigatoriamente reconhecível. Webcam real e custo por frame seguem sem medição. [Evidência e risco](../changes/2026-10-25-fase-033b2b-emr.md).
+
 ## Evidências de implementação e teste
 
 Implementação: [Game](../../js/game.js), [ForcaGame](../../js/forca.js), [LibrasEngine](../../js/libras.js) e [UI](../../js/ui.js). A inspeção incluiu todos os módulos da raiz e seus dados. Comandos, cenários reproduzidos e limitações estão em [testing.md](../testing.md). `last_verified` representa inspeção do estado, não homologação do reconhecimento.
 
 ## Relações
 
-[Roadmap](../../docs/ROADMAP.md), [matriz A–Z e protocolo](../../docs/qa/qa-reconhecimento.md), [decisões abertas](../open-decisions.md), [AGENTS](../../AGENTS.md), [mudança da FASE 01](../changes/2026-10-20-performance.md), [decisão da FASE 03.1](../changes/2026-10-23-arbitragem-estatico-dinamico.md), [decisão da FASE 03.1.2](../changes/2026-10-23-fase-0312-z-i-treino.md), [decisão da FASE 03.3B-1](../changes/2026-10-24-fase-033b1-j-oa.md), [decisão da FASE 03.3B-1.2](../changes/2026-10-24-fase-033b12-j-calibracao.md), [decisão da FASE 03.3B-1.3](../changes/2026-10-24-fase-033b13-j-segmentacao.md), [decisão da FASE 03.3B-1.4](../changes/2026-10-24-fase-033b14-j-rapido-curto.md), [decisão da FASE 03.3B-1.4.1](../changes/2026-10-25-fase-033b141-j-terminal.md), [decisão da FASE 03.3B-2A](../changes/2026-10-25-fase-033b2a-oa-pvk.md) e [decisão da FASE 03.3B-2A.1](../changes/2026-10-25-fase-033b2a1-oa.md). A arquitetura principal foi preservada.
+[Roadmap](../../docs/ROADMAP.md), [matriz A–Z e protocolo](../../docs/qa/qa-reconhecimento.md), [decisões abertas](../open-decisions.md), [AGENTS](../../AGENTS.md), [mudança da FASE 01](../changes/2026-10-20-performance.md), [decisão da FASE 03.1](../changes/2026-10-23-arbitragem-estatico-dinamico.md), [decisão da FASE 03.1.2](../changes/2026-10-23-fase-0312-z-i-treino.md), [decisão da FASE 03.3B-1](../changes/2026-10-24-fase-033b1-j-oa.md), [decisão da FASE 03.3B-1.2](../changes/2026-10-24-fase-033b12-j-calibracao.md), [decisão da FASE 03.3B-1.3](../changes/2026-10-24-fase-033b13-j-segmentacao.md), [decisão da FASE 03.3B-1.4](../changes/2026-10-24-fase-033b14-j-rapido-curto.md), [decisão da FASE 03.3B-1.4.1](../changes/2026-10-25-fase-033b141-j-terminal.md), [decisão da FASE 03.3B-2A](../changes/2026-10-25-fase-033b2a-oa-pvk.md), [decisão da FASE 03.3B-2A.1](../changes/2026-10-25-fase-033b2a1-oa.md) e [decisão da FASE 03.3B-2B](../changes/2026-10-25-fase-033b2b-emr.md). A arquitetura principal foi preservada.
