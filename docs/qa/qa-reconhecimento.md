@@ -1,4 +1,10 @@
-# QA do reconhecimento — FASE 03.3A a 03.3B-2B
+# QA do reconhecimento — FASE 03.3A a 03.3B-2B.3
+
+**Homologação frontal inicial após 03.3B-2B.3:** o [relatório técnico de quatro capturas](Libras_Arcade_Homologacao_RU_033B2B3_2026-10-26.md) registra R estendido cruzado e U paralelo com primeira confirmação correta e aceita no Treino em ambas as mãos. Todas as tentativas declararam orientação frontal, distância média e espelhamento ativo. R/direita e U/esquerda tiveram confirmações adicionais; R/direita atingiu o anel de 120 eventos. Esses ensaios sustentam recuperação funcional nessa condição, sem medir precisão geral ou validar Soletrar, Forca, vistas oblíquas/laterais e falsos cruzamentos.
+
+**Atualização 03.3B-2B.3, antes da rodada real acima:** seis novas capturas escalares da 2B.2 mostraram cruzamento e inversão persistentes nos dois R estendidos, mas U venceu por escore. A regra R agora recebe seu escore de forma quando a evidência de cruzamento 2D/3D e visibilidade converge; U e os tempos não mudaram. Replay escalar projeta R vencedora em 8/9 e 6/11 amostras anteriores à primeira confirmação das duas capturas R estendidas, sem promoção R nos controles U. Naquele momento, fixtures confirmavam hold e integração, **sem webcam pós-alteração**. [Regra e riscos](../../specs/changes/2026-10-26-fase-033b2b3-r-recuperacao.md).
+
+**Atualização 03.3B-2B.2:** seis capturas R/U com webcam após a 2B confirmaram regressão de classificação: as quatro capturas R emitiram U; os dois controles U foram aceitos. Uma captura R teve duas confirmações e não é tentativa independente para desempenho. A regra anterior de R foi recalculada nos mesmos eventos, mas superaria U em apenas uma amostra transitória de 23 eventos R antes da primeira confirmação. A regra não foi alterada; a calibração local ganhou medidas de lacuna 2D/3D, posição da aproximação e ordem 2D. Durante uma tentativa rotulada, cada inferência entra no anel de 120 eventos; encerre e salve prontamente. [Diagnóstico e próxima coleta](../../specs/changes/2026-10-26-fase-033b2b2-r-regressao.md).
 
 **Atualização 03.3B-2B:** duas janelas antigas de R confirmaram R, mas a direita alternou frequentemente com U; não são tentativas independentes. O cruzamento de R agora requer inversão das pontas no eixo local da palma e proximidade 3D, preservando U nos testes sintéticos. E/M não mudaram de regra por falta de capturas geométricas legítimas e rotuladas; a calibração expõe seus escores e concorrentes para coleta. Nenhuma dessas letras foi homologada após a mudança em webcam. [Decisão e limites](../../specs/changes/2026-10-25-fase-033b2b-emr.md).
 
@@ -20,7 +26,7 @@
 
 - **Código**: condição verificável nos módulos. **Sintético**: comportamento reproduzido por fixtures/relógio, sem estimar precisão de webcam. **Relato**: observação do usuário com webcam, sem contagem padronizada. **Pendente**: sem trilha suficiente para localizar a perda.
 - “Detectar” abaixo significa exibir uma candidata estática; não prova que passou pelo limiar, sustentou 600 ms ou gerou `signconfirmed`. “Confirmar” significa emissão desse evento, ainda sujeita à decisão do modo.
-- As regras estáticas usam componentes `fuzzyOn`, `fuzzyOff` ou `fuzzyBand`, cada um entre 0 e 1; desde a 2B, R multiplica sua média por um fator de cruzamento. O maior escore vence, sem margem mínima; empate conserva a regra anterior na ordem de `RULES`. `MIN_SCORE = 0,55` decide a elegibilidade. O hold exige 600 ms; cooldown 900 ms e rearmamento exigem liberação por 250 ms ou mudança de outra letra por 300 ms. Esses tempos não foram recalibrados aqui.
+- As regras estáticas usam componentes `fuzzyOn`, `fuzzyOff` ou `fuzzyBand`, cada um entre 0 e 1; R usa a média de forma sob cruzamento geométrico forte e mantém o produto gradual da 2B nos demais casos. O maior escore vence, sem margem mínima; empate conserva a regra anterior na ordem de `RULES`. `MIN_SCORE = 0,55` decide a elegibilidade. O hold exige 600 ms; cooldown 900 ms e rearmamento exigem liberação por 250 ms ou mudança de outra letra por 300 ms. Esses tempos não foram recalibrados aqui.
 
 ## Matriz A–Z de validação
 
@@ -45,10 +51,10 @@
 | O | Sim | Estático | Captura 7 correta; capturas 8–10 alternaram ou perderam para A | Empates e A incorreto são anteriores ao desconto da 2A.1; orientação executada em 9/10 incerta | JSON escalar; diagnóstico retrospectivo | Repetir O/A por mão e orientação real com controle A lateral |
 | P | Sim | Estático | P foi segunda candidata em frames do Soletrar | Duas decisões V→P incorretas no buffer | Resumo real; código | Medir P/V/K com mão para baixo e variantes validadas |
 | Q | Sim | Estático | Detectada anteriormente | Pode não confirmar | Relato anterior | Limiar, hold, Q/G por orientação |
-| R | Sim | Estático | Confirmada em duas janelas antigas, com alternância R/U na direita | Regra nova passou em fixtures; webcam posterior pendente | JSON escalar anterior; testes sintéticos | Cruzamento verdadeiro R/U nas duas mãos, projeção lateral e oclusão |
+| R | Sim | Estático | Na rodada frontal pós-2B.3, primeira confirmação R correta nas duas mãos | Ambas aceitas no Treino; R/direita teve confirmações extras e perdeu eventos iniciais do anel | [Quatro capturas reais](Libras_Arcade_Homologacao_RU_033B2B3_2026-10-26.md); fixtures | Repetir tentativas individuais, vistas oblíquas/laterais, espelho e outros modos |
 | S | Sim | Estático | Não identificada | Sem confirmação confiável relatada | Relato recente | Escores S/E/M/A/O |
 | T | Sim | Estático | Competiu com G em frames do ensaio | Alternância pode reiniciar hold | Resumo real; código | Escores G/T e orientação por tentativa |
-| U | Sim | Estático | Sem relato individual recente | Não homologada | Cadastro/código | U/R/H com mão vertical/lateral |
+| U | Sim | Estático | Na rodada frontal pós-2B.3, primeira confirmação U correta nas duas mãos | Ambas aceitas no Treino; U/esquerda teve confirmação adicional de A após o acerto, sem gesto rotulado nesse instante | [Quatro capturas reais](Libras_Arcade_Homologacao_RU_033B2B3_2026-10-26.md); controles sintéticos | U paralelo/aproximado e interseção espúria nas duas mãos, frente/oblíquo/lateral |
 | V | Sim | Estático | Confirmou quando P era esperado antes da 2A | Desconto condicionado à direção descendente e polegar próximo separa uma P sintética; webcam pós-mudança pendente | Resumo real; código e fixture | Validar variantes V/P com especialista e por tentativa |
 | W | Sim | Estático | Sem relato individual recente | Não homologada | Cadastro/código | Medir candidata e evento |
 | X | Sim | Estático | Gancho claro e orientação lateral necessários; C/D competem | Intermitente | Relato recente | X/C/D frontal/lateral e hold |

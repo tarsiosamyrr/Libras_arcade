@@ -2787,6 +2787,105 @@ test('R cruzado sob projeção lateral 3D conserva cruzamento observável', asyn
   }
 });
 
+test('R cruzado com eixo projetado curto supera U e sustenta o hold nas duas mãos', async () => {
+  for (const mirror of [false, true]) {
+    const r = await browserRuntime();
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.startCalibration({ intendedLetter: 'R', physicalHand: mirror ? 'left' : 'right',
+      orientation: 'oblique', distance: 'medium', mirrored: mirror });
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    for (let at = 100; at <= 750; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [crossedRPose({ yaw: 65 * Math.PI / 180, mirror,
+        jitter: at % 100 ? -.012 : .004 })] }, at, 20);
+    }
+    const sample = diag.read().events.find((event) => event.type === 'recognition');
+    const geometry = JSON.stringify({ axis: sample.palmAxisIM, order2D: sample.crossOrder2DIM,
+      order3D: sample.crossOrderIM, depth: sample.crossDepthIM,
+      scoreR: sample.scoreR, scoreU: sample.scoreU });
+    assert.ok(sample.crossDepthIM !== null && sample.crossDepthIM < sample.palmAxisIM / 2,
+      geometry);
+    assert.ok(sample.crossOrder2DIM > sample.crossDepthIM && sample.crossOrderIM > 0, geometry);
+    assert.equal(sample.candidate, 'R', geometry);
+    assert.ok(sample.scoreR > sample.scoreU, geometry);
+    assert.deepEqual(signs, ['R']);
+  }
+});
+
+test('U paralelo tolera interseção projetada isolada sem confirmar R', async () => {
+  for (const mirror of [false, true]) {
+    const r = await browserRuntime();
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.startCalibration({ intendedLetter: 'U', physicalHand: mirror ? 'left' : 'right',
+      orientation: 'front', distance: 'medium', mirrored: mirror });
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    const parallel = crossedRPose({ parallel: true, mirror });
+    const accidental = crossedRPose({ parallel: true, mirror });
+    accidental[7] = { ...accidental[7], x: mirror ? .42 : .58 };
+    accidental[11] = { ...accidental[11], x: mirror ? .48 : .52 };
+    for (let at = 100; at <= 1150; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [at === 400 ? accidental : parallel] }, at, 20);
+    }
+    const events = diag.read().events;
+    const noise = events.find((event) => event.type === 'recognition' && event.at === 400);
+    assert.equal(noise.crossGap2DIM < 1e-10, true);
+    assert.ok(noise.crossOrder2DIM <= 0);
+    assert.deepEqual(signs, ['U']);
+    assert.equal(events.some((event) => event.type === 'signconfirmed' && event.letter === 'R'), false);
+  }
+});
+
+test('U com pontas próximas e pequenas oscilações permanece U sem inversão', async () => {
+  for (const mirror of [false, true]) {
+    const r = await browserRuntime();
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.startCalibration({ intendedLetter: 'U', physicalHand: mirror ? 'left' : 'right',
+      orientation: 'front', distance: 'medium', mirrored: mirror });
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    for (let at = 100; at <= 950; at += 50) {
+      const hand = crossedRPose({ parallel: true, mirror });
+      const offset = at % 100 ? .004 : .002;
+      hand[8] = { ...hand[8], x: .5 + (mirror ? 1 : -1) * offset, z: .04 };
+      hand[12] = { ...hand[12], x: .5 + (mirror ? -1 : 1) * offset, z: -.04 };
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+    const samples = diag.read().events.filter((event) => event.type === 'recognition');
+    assert.ok(samples.every((event) => event.crossDepthIM === null));
+    assert.ok(samples.every((event) => event.crossOrder2DIM < 0));
+    assert.ok(samples.some((event) => event.crossGap2DIM < .03));
+    assert.deepEqual(signs, ['U']);
+  }
+});
+
+test('um único frame espúrio com geometria de R não supera o hold de U', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'U', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  const engine = new r.LibrasEngine();
+  const signs = [];
+  engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+  for (let at = 100; at <= 1250; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [at === 400
+      ? crossedRPose({ yaw: 65 * Math.PI / 180 })
+      : crossedRPose({ parallel: true })] }, at, 20);
+  }
+  const events = diag.read().events;
+  assert.ok(events.some((event) => event.type === 'recognition' &&
+    event.at === 400 && event.candidate === 'R'));
+  assert.deepEqual(signs, ['U']);
+  assert.equal(events.some((event) => event.type === 'signconfirmed' && event.letter === 'R'), false);
+});
+
 test('calibração E/M/R expõe concorrentes e escalares sem landmarks', async () => {
   const r = await browserRuntime();
   const diag = r.window.librasArcadeDiagnostics;
@@ -2803,6 +2902,77 @@ test('calibração E/M/R expõe concorrentes e escalares sem landmarks', async (
   }
   assert.equal(diag.read().calibration.physicalHand, 'left');
   assert.equal(diag.read().events.some((event) => 'landmarks' in event), false);
+});
+
+test('calibração distingue aproximação projetada sem interseção de U paralelo', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  const engine = new r.LibrasEngine();
+  const near = crossedRPose({ parallel: true });
+  near[8] = { ...near[8], x: .499, z: .04 };
+  near[12] = { ...near[12], x: .501, z: -.04 };
+
+  diag.startCalibration({ intendedLetter: 'R', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  engine.update({ landmarks: [near] }, 100, 20);
+  const nearSample = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal(nearSample.crossDepthIM, null);
+  assert.equal(nearSample.scoreR, 0);
+  for (const field of ['crossGap2DIM', 'crossGap3DIM', 'crossGap3DAt2DIM',
+    'crossProgressIndex2D', 'crossProgressMiddle2D', 'crossOrder2DIM']) {
+    assert.ok(Number.isFinite(nearSample[field]), field);
+  }
+  assert.ok(nearSample.crossGap2DIM > 0);
+  assert.ok(nearSample.crossGap3DAt2DIM > nearSample.crossGap2DIM);
+  assert.ok(nearSample.crossGap3DIM <= nearSample.crossGap3DAt2DIM);
+  assert.ok(nearSample.crossProgressIndex2D > .5);
+  assert.ok(nearSample.crossProgressMiddle2D > .5);
+  assert.ok(nearSample.crossOrder2DIM < 0);
+
+  diag.startCalibration({ intendedLetter: 'U', physicalHand: 'left',
+    orientation: 'front', distance: 'medium', mirrored: true });
+  engine.update({ landmarks: [crossedRPose({ parallel: true, mirror: true })] }, 300, 20);
+  const parallelSample = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal(parallelSample.crossDepthIM, null);
+  assert.ok(parallelSample.crossGap2DIM > nearSample.crossGap2DIM);
+  assert.equal(parallelSample.scoreR, 0);
+
+  diag.enable();
+  engine.update({ landmarks: [near] }, 500, 20);
+  const ordinarySample = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal('crossGap2DIM' in ordinarySample, false);
+  assert.equal(diag.read().events.some((event) => 'landmarks' in event), false);
+});
+
+test('calibração expõe separação 3D quando os dedos se sobrepõem só na projeção', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ intendedLetter: 'U', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  const engine = new r.LibrasEngine();
+  engine.update({ landmarks: [crossedRPose({ depthGap: .5 })] }, 100, 20);
+  const sample = diag.read().events.find((event) => event.type === 'recognition');
+  assert.ok(Number.isFinite(sample.crossDepthIM));
+  assert.ok(sample.crossGap2DIM < 1e-10);
+  assert.ok(sample.crossGap3DAt2DIM > .1);
+  assert.ok(sample.crossGap3DIM <= sample.crossGap3DAt2DIM);
+  assert.ok(sample.scoreR < .55);
+});
+
+test('calibração rotulada guarda frames consecutivos sem mudar a amostragem comum', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  const engine = new r.LibrasEngine();
+  const hand = crossedRPose({ parallel: true });
+  diag.startCalibration({ intendedLetter: 'U', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  for (const at of [100, 150, 200]) engine.update({ landmarks: [hand] }, at, 20);
+  assert.equal(diag.read().events.filter((event) => event.type === 'recognition').length, 3);
+
+  diag.enable();
+  for (const at of [300, 350, 400]) engine.update({ landmarks: [hand] }, at, 20);
+  assert.equal(diag.read().events.filter((event) => event.type === 'recognition').length, 1);
+  assert.equal(diag.read().capacity, 120);
 });
 
 test('R cruzado chega ao Treino e Soletrar uma vez após U incorreto e rearmamento', async () => {
@@ -2823,7 +2993,7 @@ test('R cruzado chega ao Treino e Soletrar uma vez após U incorreto e rearmamen
     for (let at = 100; at <= 750; at += 50) frame(at, crossedRPose({ parallel: true }));
     for (let at = 800; at <= 1100; at += 50) frame(at, null);
     for (let at = 1150; at <= 2750; at += 50) frame(at,
-      crossedRPose({ jitter: at % 100 ? .002 : -.002 }));
+      crossedRPose({ yaw: 65 * Math.PI / 180, jitter: at % 100 ? -.012 : .004 }));
     const events = diag.read().events;
     const confirmed = events.filter((event) => event.type === 'signconfirmed');
     assert.deepEqual(Array.from(confirmed, (event) => event.letter), ['U', 'R']);

@@ -331,14 +331,98 @@ function crossingGeometry(lm, scale) {
   const axisY = lm[LM.MIDDLE_MCP].y - lm[LM.INDEX_MCP].y;
   const axisZ = (lm[LM.MIDDLE_MCP].z ?? 0) - (lm[LM.INDEX_MCP].z ?? 0);
   const axisLength = Math.hypot(axisX, axisY, axisZ);
+  const projectedLength = Math.hypot(axisX, axisY);
+  const tipDeltaX = lm[LM.INDEX_TIP].x - lm[LM.MIDDLE_TIP].x;
+  const tipDeltaY = lm[LM.INDEX_TIP].y - lm[LM.MIDDLE_TIP].y;
   return {
-    palmAxisIM: Math.hypot(axisX, axisY) / scale,
+    palmAxisIM: projectedLength / scale,
+    crossOrder2DIM: projectedLength === 0 ? 0 :
+      (tipDeltaX * axisX + tipDeltaY * axisY) / (projectedLength * scale),
     crossOrderIM: axisLength === 0 ? 0 : (
-      (lm[LM.INDEX_TIP].x - lm[LM.MIDDLE_TIP].x) * axisX +
-      (lm[LM.INDEX_TIP].y - lm[LM.MIDDLE_TIP].y) * axisY +
+      tipDeltaX * axisX + tipDeltaY * axisY +
       ((lm[LM.INDEX_TIP].z ?? 0) - (lm[LM.MIDDLE_TIP].z ?? 0)) * axisZ
     ) / (axisLength * scale),
     crossDepthIM: projectedCrossDepth(lm, scale)
+  };
+}
+
+/** Menor distância entre dois segmentos em 2D ou 3D, com posição em cada um. */
+function closestSegments(a, b, c, d, spatial) {
+  const az = spatial ? (a.z ?? 0) : 0;
+  const bz = spatial ? (b.z ?? 0) : 0;
+  const cz = spatial ? (c.z ?? 0) : 0;
+  const dz = spatial ? (d.z ?? 0) : 0;
+  const ux = b.x - a.x, uy = b.y - a.y, uz = bz - az;
+  const vx = d.x - c.x, vy = d.y - c.y, vz = dz - cz;
+  const wx = a.x - c.x, wy = a.y - c.y, wz = az - cz;
+  const uu = ux * ux + uy * uy + uz * uz;
+  const vv = vx * vx + vy * vy + vz * vz;
+  const uv = ux * vx + uy * vy + uz * vz;
+  const uw = ux * wx + uy * wy + uz * wz;
+  const vw = vx * wx + vy * wy + vz * wz;
+  const clamp = (value) => Math.max(0, Math.min(1, value));
+  let best = null;
+  const consider = (indexAt, middleAt) => {
+    const dx = wx + indexAt * ux - middleAt * vx;
+    const dy = wy + indexAt * uy - middleAt * vy;
+    const dz = wz + indexAt * uz - middleAt * vz;
+    const distance = Math.hypot(dx, dy, dz);
+    if (best === null || distance < best.distance) {
+      best = { distance, indexAt, middleAt };
+    }
+  };
+
+  consider(0, vv > 0 ? clamp(vw / vv) : 0);
+  consider(1, vv > 0 ? clamp((vw + uv) / vv) : 0);
+  consider(uu > 0 ? clamp(-uw / uu) : 0, 0);
+  consider(uu > 0 ? clamp((uv - uw) / uu) : 0, 1);
+  const determinant = uu * vv - uv * uv;
+  if (determinant > 1e-16) {
+    const indexAt = (uv * vw - vv * uw) / determinant;
+    const middleAt = (uu * vw - uv * uw) / determinant;
+    if (indexAt >= 0 && indexAt <= 1 && middleAt >= 0 && middleAt <= 1) {
+      consider(indexAt, middleAt);
+    }
+  }
+  return best;
+}
+
+/** Distâncias e posições para investigar R/U; só é chamada na calibração. */
+function calibrationCrossingGeometry(lm, scale) {
+  let projected = null;
+  let spatial = null;
+  for (let i = 0; i < R_INDEX_SEGMENTS.length; i++) {
+    const [startI, endI] = R_INDEX_SEGMENTS[i];
+    for (let j = 0; j < R_MIDDLE_SEGMENTS.length; j++) {
+      const [startM, endM] = R_MIDDLE_SEGMENTS[j];
+      const a = lm[startI], b = lm[endI], c = lm[startM], d = lm[endM];
+      const gap2D = closestSegments(a, b, c, d, false);
+      const gap3D = closestSegments(a, b, c, d, true);
+      const depth = (a.z ?? 0) + gap2D.indexAt * ((b.z ?? 0) - (a.z ?? 0)) -
+        (c.z ?? 0) - gap2D.middleAt * ((d.z ?? 0) - (c.z ?? 0));
+      const gap3DAt2D = Math.hypot(gap2D.distance, depth);
+      if (projected === null || gap2D.distance < projected.distance - 1e-12 ||
+          (Math.abs(gap2D.distance - projected.distance) <= 1e-12 &&
+            gap3DAt2D < projected.gap3DAt2D)) {
+        projected = { ...gap2D, gap3DAt2D, i, j };
+      }
+      if (spatial === null || gap3D.distance < spatial) spatial = gap3D.distance;
+    }
+  }
+  const progress = (segments, segmentIndex, along) => {
+    const lengths = segments.map(([start, end]) =>
+      Math.hypot(lm[end].x - lm[start].x, lm[end].y - lm[start].y));
+    const total = lengths.reduce((sum, length) => sum + length, 0);
+    return total === 0 ? 0 :
+      (lengths.slice(0, segmentIndex).reduce((sum, length) => sum + length, 0) +
+        along * lengths[segmentIndex]) / total;
+  };
+  return {
+    crossGap2DIM: projected.distance / scale,
+    crossGap3DIM: spatial / scale,
+    crossGap3DAt2DIM: projected.gap3DAt2D / scale,
+    crossProgressIndex2D: progress(R_INDEX_SEGMENTS, projected.i, projected.indexAt),
+    crossProgressMiddle2D: progress(R_MIDDLE_SEGMENTS, projected.j, projected.middleAt)
   };
 }
 
@@ -584,18 +668,28 @@ const RULES = {
     );
   },
   R(f, geometry) {
-    // A separação no encontro dos segmentos permite pontas distantes entre si;
-    // a projeção sem cruzamento ou com profundidade distante não conta.
+    const indexUp = fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
+    const middleUp = fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
+    const ringDown = fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
+    const pinkyDown = fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
+    const shapeScore = avg(indexUp, middleUp, ringDown, pinkyDown);
+    // A inversão precisa superar a separação em profundidade no encontro;
+    // esta deve ser menor que metade da distância projetada entre as bases.
+    // O hold existente exige que essa evidência persista antes de confirmar R.
+    const strongCrossing = Math.min(indexUp, middleUp, ringDown, pinkyDown) > 0.5 &&
+      Number.isFinite(geometry.crossDepthIM) &&
+      geometry.crossOrder2DIM > geometry.crossDepthIM &&
+      geometry.crossOrderIM > 0 &&
+      geometry.crossDepthIM < geometry.palmAxisIM / 2 &&
+      fuzzyOn(geometry.palmAxisIM, 0, CONFIG.SPREAD_TOGETHER) >= 0.5;
+    if (strongCrossing) return shapeScore;
+
+    // Evidência parcial conserva o escore gradual da 2B, sem promover U paralelo.
     const crossing = fuzzyOn(geometry.crossOrderIM, 0, CONFIG.SPREAD_TOGETHER / 2) *
       (geometry.crossDepthIM === null ? 0 :
         fuzzyOff(geometry.crossDepthIM, CONFIG.SPREAD_TOGETHER, CONFIG.SPREAD_APART)) *
       fuzzyOn(geometry.palmAxisIM, 0, CONFIG.SPREAD_TOGETHER);
-    return crossing * avg(
-      fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON)
-    );
+    return crossing * shapeScore;
   },
   S(f) {
     return avg(
@@ -1034,6 +1128,7 @@ export class LibrasEngine extends EventTarget {
       Object.assign(sample, ranking.calibrationScores);
       Object.assign(sample, calibrationGeometry(landmarks, scale));
       Object.assign(sample, crossing);
+      Object.assign(sample, calibrationCrossingGeometry(landmarks, scale));
     }
     diagnostics.observe(sample, nowMs);
   }

@@ -18,6 +18,8 @@ const SAFE_FIELDS = new Set([
   'tipPalmMean', 'thumbFingerDepth', 'thumbIndexMcp', 'thumbMiddleMcp',
   'thumbRingPinch', 'tipDepthIM', 'thumbPinkyMcp', 'thumbRingMcp',
   'crossIM', 'crossOrderIM', 'crossDepthIM', 'palmAxisIM',
+  'crossGap2DIM', 'crossGap3DIM', 'crossGap3DAt2DIM',
+  'crossProgressIndex2D', 'crossProgressMiddle2D', 'crossOrder2DIM',
   'scoreA', 'scoreB', 'scoreC', 'scoreF', 'scoreG', 'scoreI', 'scoreK',
   'scoreE', 'scoreM', 'scoreN', 'scoreO', 'scoreP', 'scoreR', 'scoreS',
   'scoreT', 'scoreU', 'scoreV', 'scoreY',
@@ -128,11 +130,12 @@ class RecognitionDiagnostics {
     this._size = Math.min(CAPACITY, this._size + 1);
   }
 
-  /** Amostra o reconhecimento a cada 200 ms ou quando muda o motivo/estado/candidata. */
+  /** Na tentativa rotulada, registra cada inferência; fora dela, limita a 200 ms. */
   observe(details, at) {
     if (!this.enabled) return;
     const key = `${details.candidate}:${details.phase}:${details.reason}:${details.motionStatus}`;
-    if (key === this._lastSampleKey && at - this._lastSampleAt < SAMPLE_MS) return;
+    if (!this.calibrationActive && key === this._lastSampleKey &&
+        at - this._lastSampleAt < SAMPLE_MS) return;
     this._lastSampleAt = at;
     this._lastSampleKey = key;
     this.record('recognition', details, at);
