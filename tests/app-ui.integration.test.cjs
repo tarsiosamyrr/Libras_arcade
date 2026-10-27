@@ -321,29 +321,125 @@ test('quatro dedos separados não sustentam W ou F nas duas projeções', async 
   }
 });
 
-test('quatro dedos separados não confirmam V nem K nas duas projeções', async () => {
+test('quatro dedos separados não confirmam V, K ou U nas duas projeções', async () => {
   for (const mirror of [false, true]) {
     const r = await browserRuntime();
     const engine = new r.LibrasEngine();
     const signs = [];
-    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+
+    engine.addEventListener('signconfirmed', (event) => {
+      signs.push(event.detail.letter);
+    });
+
     const diag = r.window.librasArcadeDiagnostics;
-    diag.startCalibration({ controlPose: 'four_spread', physicalHand: mirror ? 'left' : 'right',
-      orientation: 'front', distance: 'medium', mirrored: mirror });
+
+    diag.startCalibration({
+      controlPose: 'four_spread',
+      physicalHand: mirror ? 'left' : 'right',
+      orientation: 'front',
+      distance: 'medium',
+      mirrored: mirror
+    });
+
     for (let at = 100; at <= 850; at += 50) {
       r.clock.now = at;
-      engine.update({ landmarks: [fourFingerPose({ spread: 2.05, mirror,
-        projection: .85, angle: .25, depth: .01,
-        jitter: at % 100 ? .002 : -.002 })] }, at, 20);
+
+      engine.update({
+        landmarks: [
+          fourFingerPose({
+            spread: 2.05,
+            mirror,
+            projection: .85,
+            angle: .25,
+            depth: .01,
+            jitter: at % 100 ? .002 : -.002
+          })
+        ]
+      }, at, 20);
     }
+
     const events = diag.stopCalibration().events;
-    const frames = events.filter((event) => event.type === 'recognition' && event.handPresent);
-    assert.ok(frames.every((event) => event.scoreV < .55 && event.scoreK < .55),
-      `espelho ${mirror}: V/K elegíveis`);
-    assert.ok(signs.every((letter) => !['V', 'K'].includes(letter)),
-      `espelho ${mirror}: confirmações ${signs.join(',')}`);
-    assert.equal(events.some((event) => event.type === 'signconfirmed' &&
-      ['V', 'K'].includes(event.letter)), false);
+
+    const frames = events.filter(
+      (event) => event.type === 'recognition' && event.handPresent
+    );
+
+    assert.ok(frames.length > 0, `espelho ${mirror}: sem frames`);
+
+    assert.ok(
+      frames.every((event) =>
+        event.scoreV < .55 &&
+        event.scoreK < .55 &&
+        event.scoreU < .55
+      ),
+      `espelho ${mirror}: V/K/U elegíveis indevidamente`
+    );
+
+    assert.deepEqual(
+      signs,
+      [],
+      `espelho ${mirror}: confirmação indevida ${signs.join(',')}`
+    );
+
+    assert.equal(
+      events.some((event) => event.type === 'signconfirmed'),
+      false,
+      `espelho ${mirror}: evento de confirmação indevido`
+    );
+  }
+});
+
+test('U paralelo confirma nas duas projeções sem regredir para R', async () => {
+  for (const mirror of [false, true]) {
+    const r = await browserRuntime();
+    const engine = new r.LibrasEngine();
+    const signs = [];
+
+    engine.addEventListener('signconfirmed', (event) => {
+      signs.push(event.detail.letter);
+    });
+
+    const diag = r.window.librasArcadeDiagnostics;
+
+    diag.startCalibration({
+      intendedLetter: 'U',
+      physicalHand: mirror ? 'left' : 'right',
+      orientation: 'front',
+      distance: 'medium',
+      mirrored: mirror
+    });
+
+    const hand = crossedRPose({
+      parallel: true,
+      mirror
+    });
+
+    for (let at = 100; at <= 850; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+
+    const events = diag.stopCalibration().events;
+
+    const frames = events.filter(
+      (event) => event.type === 'recognition' && event.handPresent
+    );
+
+    assert.ok(
+      frames.length > 0,
+      `espelho ${mirror}: nenhum frame de reconhecimento`
+    );
+
+    assert.ok(
+      frames.some((event) => event.candidate === 'U'),
+      `espelho ${mirror}: U não se tornou candidata`
+    );
+
+    assert.deepEqual(
+      signs,
+      ['U'],
+      `espelho ${mirror}: confirmação incorreta ${signs.join(',')}`
+    );
   }
 });
 

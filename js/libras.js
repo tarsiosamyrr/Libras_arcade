@@ -584,17 +584,33 @@ const RULES = {
       fuzzyOff(f.thumbMiddlePinch, CONFIG.PINCH_ON, CONFIG.PINCH_ON + 0.25)
     );
   },
+
   U(f) {
-    return avg(
-      fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.spreadIM, CONFIG.SPREAD_TOGETHER, CONFIG.SPREAD_APART),
-      uprightScore(f.pointAngleIM),
-      fuzzyOn(f.crossIM, CONFIG.CROSS_ON, CONFIG.CROSS_OFF)
-    );
-  },
+  const ringClosed = fuzzyOff(
+    f.extRing,
+    CONFIG.FINGER_EXT_OFF,
+    CONFIG.FINGER_EXT_ON
+  );
+
+  const pinkyClosed = fuzzyOff(
+    f.extPinky,
+    CONFIG.FINGER_EXT_OFF,
+    CONFIG.FINGER_EXT_ON
+  );
+
+  const shapeScore = avg(
+    fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
+    fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
+    ringClosed,
+    pinkyClosed,
+    fuzzyOff(f.spreadIM, CONFIG.SPREAD_TOGETHER, CONFIG.SPREAD_APART),
+    uprightScore(f.pointAngleIM),
+    fuzzyOn(f.crossIM, CONFIG.CROSS_ON, CONFIG.CROSS_OFF)
+  );
+
+  return Math.min(shapeScore, ringClosed, pinkyClosed);
+},
+
   V(f) {
     const ringClosed = fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
     const pinkyClosed = fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
