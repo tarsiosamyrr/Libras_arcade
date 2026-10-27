@@ -1,6 +1,22 @@
 # Verificações e evidências
 
-**Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
+## Correção conjunta V/K — FASE 03.3B-2D.4
+
+O [relatório](../docs/qa/Libras_Arcade_Correcao_VK_033B2D4_2026-10-27.md) confronta seis capturas reais com as regras, incluindo a perda dos frames pré-confirmação de K esquerda no anel de 120. Antes da mudança, `classify()` reproduziu 146/146 frames com mão. O replay dos dois controles `four_spread` desloca V/K para U, que fica abaixo da elegibilidade nos frames estáveis; um W transitório não confirma. V nas duas mãos e K direita mantêm as 33 candidaturas pré-confirmação e os três instantes visíveis de confirmação. O teste geométrico novo falhou antes dos gates por aceitar anelar/mínimo abertos e passou depois; três testes de integração cobrem controle negativo, Treino/Soletrar e rearmamento. Uma fixture frontal ainda confirma U como sucessora, portanto não há aprovação geral nem homologação pós-patch.
+
+Os comandos npm sem substituição falham com `ENOENT` porque `js/forca.js` está ausente por uma movimentação local não relacionada para `docs/forca.js` (bytes idênticos ao HEAD), preservada nesta fase. Com `NODE_OPTIONS` fornecendo uma substituição de leitura **somente no processo de teste** para essa cópia, `npm.cmd test`, `npm.cmd run test:camera` e `npm.cmd run test:performance` passaram: **206/206** geral, **193/193** câmera simulada e **13/13** performance lógica. Esses resultados não equivalem à execução npm sem a movimentação resolvida; custo real de CPU/FPS/RAM e webcam atualizada não foram medidos.
+
+`node --check` em `js/*.js` e nos dois testes passou; `git diff --check` e `git diff --cached --check` passaram. `validate_specs.py` encontrou o link preexistente para `js/forca.js` ausente, pelo mesmo motivo da falha npm.
+
+## Diagnóstico V/K após W/F — FASE 03.3B-2D.3
+
+O [diagnóstico contrastivo](../docs/qa/Libras_Arcade_Diagnostico_VK_033B2D3_2026-10-27.md) reexecutou `classify()` nos 50 frames com mão da captura externa e reproduziu candidata, segunda colocada e escores sem divergências. O replay escalar com timestamps reproduziu a primeira confirmação V visível; um gate isolado de V a deslocou para K no mesmo instante, enquanto gates hipotéticos V/K não geraram confirmação no trecho retido. Um teste negativo sintético falhou primeiro por V e, após o gate isolado, por K; patch e teste temporários foram retirados. Regras e testes versionados permanecem iguais ao checkpoint. A captura longa perdeu eventos anteriores no anel de 120 e não inclui V/K físicos positivos, logo não homologa correção.
+
+`npm.cmd test`: **201/201**; `npm.cmd run test:camera`: **188/188**; `npm.cmd run test:performance`: **13/13**. Sintaxe de `js/*.js` e do teste de integração aprovada. `validate_specs.py` passou com o Python do runtime local (o launcher `py` do WindowsApps falhou). A suíte de performance verifica contratos, sem medir CPU/RAM/FPS desta análise.
+
+## Registros anteriores
+
+**Data da auditoria inicial:** 20/10/2026. **Ambiente:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
 ## Falso W/F após B — FASE 03.3B-2D.2
 

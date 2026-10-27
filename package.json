@@ -2,8 +2,8 @@
   "name": "libras-arcade",
   "private": true,
   "scripts": {
-    "test": "node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs tests/app-ui.integration.test.cjs",
+    "test": "node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs tests/app-ui.integration.test.cjs tests/vk-gates.test.cjs",
     "test:performance": "node --experimental-vm-modules --test tests/performance.test.cjs",
-    "test:camera": "node --experimental-vm-modules --test tests/phase02.test.mjs tests/app-ui.integration.test.cjs"
+    "test:camera": "node --experimental-vm-modules --test tests/phase02.test.mjs tests/app-ui.integration.test.cjs tests/vk-gates.test.cjs"
   }
 }

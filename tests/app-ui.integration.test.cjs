@@ -321,6 +321,32 @@ test('quatro dedos separados não sustentam W ou F nas duas projeções', async 
   }
 });
 
+test('quatro dedos separados não confirmam V nem K nas duas projeções', async () => {
+  for (const mirror of [false, true]) {
+    const r = await browserRuntime();
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.startCalibration({ controlPose: 'four_spread', physicalHand: mirror ? 'left' : 'right',
+      orientation: 'front', distance: 'medium', mirrored: mirror });
+    for (let at = 100; at <= 850; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [fourFingerPose({ spread: 2.05, mirror,
+        projection: .85, angle: .25, depth: .01,
+        jitter: at % 100 ? .002 : -.002 })] }, at, 20);
+    }
+    const events = diag.stopCalibration().events;
+    const frames = events.filter((event) => event.type === 'recognition' && event.handPresent);
+    assert.ok(frames.every((event) => event.scoreV < .55 && event.scoreK < .55),
+      `espelho ${mirror}: V/K elegíveis`);
+    assert.ok(signs.every((letter) => !['V', 'K'].includes(letter)),
+      `espelho ${mirror}: confirmações ${signs.join(',')}`);
+    assert.equal(events.some((event) => event.type === 'signconfirmed' &&
+      ['V', 'K'].includes(event.letter)), false);
+  }
+});
+
 test('controle de quatro dedos separados não confirma B, W ou F após pausa e retomada', async () => {
   const r = await browserRuntime();
   const engine = new r.LibrasEngine();
@@ -2698,6 +2724,62 @@ test('P, V e K mantêm decisão estável com espelho, inclinação e ruído pequ
       }
       assert.deepEqual(signs, [letter], `${letter}, espelho=${mirror}`);
     }
+  }
+});
+
+test('V e K chegam ao Treino e Soletrar nas duas projeções após o hold', async () => {
+  for (const mode of ['practice', 'word']) {
+    for (const letter of ['V', 'K']) {
+      for (const mirror of [false, true]) {
+        const r = await browserRuntime();
+        const game = new r.Game();
+        const engine = new r.LibrasEngine();
+        new r.UI(engine, game, new r.ForcaGame());
+        const diag = r.window.librasArcadeDiagnostics;
+        diag.enable();
+        r.cards[mode === 'practice' ? 0 : 1].click();
+        game.target = mode === 'practice' ? letter : `${letter}A`;
+        if (mode === 'word') game.wordIndex = 0;
+        for (let at = 100; at <= 1300; at += 50) {
+          r.clock.now = at;
+          const jitter = ((at / 50) % 3 - 1) * .003;
+          const hand = twoFingerCalibrationPose({ thumbY: (letter === 'V' ? .8 : .48) + jitter,
+            mirror, angle: .12 });
+          engine.update({ landmarks: [hand] }, at, 20);
+        }
+        const events = diag.read().events;
+        assert.equal(events.filter((event) => event.type === 'signconfirmed' &&
+          event.letter === letter).length, 1, `${mode}, ${letter}, espelho ${mirror}`);
+        assert.ok(events.some((event) => event.type === 'ui_received' &&
+          event.letter === letter));
+        assert.ok(events.some((event) => event.type === 'game_decision' &&
+          event.letter === letter && event.mode === mode && event.reason === 'accepted'));
+      }
+    }
+  }
+});
+
+test('V e K exigem liberação e novo hold para repetir após cooldown', async () => {
+  for (const letter of ['V', 'K']) {
+    const r = await browserRuntime();
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    const hand = twoFingerCalibrationPose({ thumbY: letter === 'V' ? .8 : .48 });
+    for (let at = 100; at <= 1300; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+    assert.deepEqual(signs, [letter]);
+    for (let at = 1350; at <= 1700; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [] }, at, 20);
+    }
+    for (let at = 1750; at <= 2500; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [hand] }, at, 20);
+    }
+    assert.deepEqual(signs, [letter, letter]);
   }
 });
 

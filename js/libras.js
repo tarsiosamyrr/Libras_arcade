@@ -596,16 +596,20 @@ const RULES = {
     );
   },
   V(f) {
+    const ringClosed = fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
+    const pinkyClosed = fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
     const shapeScore = avg(
       fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
+      ringClosed,
+      pinkyClosed,
       fuzzyOn(f.spreadIM, CONFIG.SPREAD_TOGETHER, CONFIG.SPREAD_APART),
       fuzzyOn(f.thumbBetweenIM, CONFIG.THUMB_NEAR_ON, CONFIG.THUMB_NEAR_OFF)
     );
     const thumbNear = fuzzyOff(f.thumbBetweenIM, CONFIG.THUMB_NEAR_ON, CONFIG.THUMB_NEAR_OFF);
-    return shapeScore * (1 - CONFIG.V_DOWN_THUMB_DISCOUNT * thumbNear * downScore(f.pointAngleIM));
+    // Dedos recolhidos são necessários; a média sozinha aceita quatro dedos abertos.
+    return Math.min(shapeScore, ringClosed, pinkyClosed) *
+      (1 - CONFIG.V_DOWN_THUMB_DISCOUNT * thumbNear * downScore(f.pointAngleIM));
   },
   W(f) {
     const pinkyClosed = fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
@@ -669,15 +673,18 @@ const RULES = {
     );
   },
   K(f) {
-    return avg(
+    const ringClosed = fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
+    const pinkyClosed = fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
+    const thumbNear = fuzzyOff(f.thumbBetweenIM, CONFIG.THUMB_NEAR_ON, CONFIG.THUMB_NEAR_OFF);
+    return Math.min(ringClosed, pinkyClosed, thumbNear, avg(
       fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
+      ringClosed,
+      pinkyClosed,
       fuzzyOn(f.spreadIM, CONFIG.SPREAD_TOGETHER, CONFIG.SPREAD_APART),
-      fuzzyOff(f.thumbBetweenIM, CONFIG.THUMB_NEAR_ON, CONFIG.THUMB_NEAR_OFF),
+      thumbNear,
       upScore(f.pointAngleIM)
-    );
+    ));
   },
   M(f) {
     return avg(
