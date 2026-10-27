@@ -162,6 +162,280 @@ function crossedRPose({ mirror = false, angle = 0, yaw = 0, scale = 1, parallel 
   });
 }
 
+// Controle geométrico: a abertura multiplica a distância lateral entre pontas
+// relativa à distância entre MCPs. Não representa uma coleta de webcam.
+function fourFingerPose({ mirror = false, spread = 1, down = false, thumbOut = false,
+  pinkyBent = false, indexBent = false, foldedThree = false,
+  depth = 0, jitter = 0, projection = 1, angle = 0 } = {}) {
+  const hand = Array.from({ length: 21 }, () => ({ x: .5, y: .7, z: 0 }));
+  hand[0] = { x: .5, y: .85, z: 0 };
+  for (const [mcp, pip, dip, tip, x] of [
+    [5, 6, 7, 8, .36], [9, 10, 11, 12, .45],
+    [13, 14, 15, 16, .54], [17, 18, 19, 20, .63]
+  ]) {
+    hand[mcp] = { x, y: .6, z: 0 };
+    hand[pip] = { x: .5 + (x - .5) * (1 + spread) / 2, y: .46, z: 0 };
+    hand[dip] = { x: .5 + (x - .5) * spread, y: .36, z: 0 };
+    hand[tip] = { x: .5 + (x - .5) * spread + jitter * (tip % 2 ? -1 : 1),
+      y: .26 + (tip - 8) * .003, z: depth * (tip - 14) / 6 };
+  }
+  if (pinkyBent) {
+    hand[18].y = .59;
+    hand[19].y = .62;
+    hand[20].y = .63;
+  }
+  if (indexBent) {
+    hand[6] = { x: .36, y: .48, z: 0 };
+    hand[7] = { x: .36, y: .54, z: 0 };
+    hand[8] = { x: .36, y: .59, z: 0 };
+  }
+  if (foldedThree) {
+    for (const [pip, dip, tip, x] of [[6, 7, 8, .36], [10, 11, 12, .45],
+      [14, 15, 16, .54]]) {
+      hand[pip] = { x, y: .47, z: 0 };
+      hand[dip] = { x, y: .52, z: 0 };
+      hand[tip] = { x, y: .59, z: 0 };
+    }
+    hand[18].y = .57;
+    hand[19].y = .61;
+    hand[20].y = .62;
+  }
+  hand[1] = { x: .4, y: .72, z: 0 };
+  hand[2] = { x: .42, y: .66, z: 0 };
+  hand[3] = { x: .44, y: .63, z: 0 };
+  hand[4] = { x: thumbOut ? .83 : foldedThree ? .61 : indexBent ? .37 : .45,
+    y: .61, z: 0 };
+  return hand.map(({ x, y, z }) => {
+    const dx = (x - .5) * projection, dy = y - .85;
+    const rotatedX = .5 + dx * Math.cos(angle) - dy * Math.sin(angle);
+    const rotatedY = .85 + dx * Math.sin(angle) + dy * Math.cos(angle);
+    return { x: mirror ? 1 - rotatedX : rotatedX, y: down ? 1.1 - rotatedY : rotatedY, z };
+  });
+}
+
+test('B mantém candidatura e confirmação com quatro dedos unidos em projeções espelhadas', async () => {
+  for (const mirror of [false, true]) {
+    for (const spread of [1, 1.7]) {
+      const r = await browserRuntime();
+      const engine = new r.LibrasEngine();
+      const signs = [];
+      engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+      for (let at = 100; at <= 750; at += 50) {
+        r.clock.now = at;
+        engine.update({ landmarks: [fourFingerPose({ mirror, spread, depth: .015,
+          jitter: at % 100 ? .002 : -.002 })] }, at, 20);
+        assert.equal(engine.state.letter, 'B', `espelho ${mirror}, abertura ${spread}, t=${at}`);
+      }
+      assert.deepEqual(signs, ['B']);
+    }
+  }
+});
+
+test('B rejeita quatro dedos separados, W, três dedos para baixo e polegar aberto', async () => {
+  for (const options of [
+    { spread: 3.2 }, { spread: 3.2, mirror: true },
+    { spread: 1.7, pinkyBent: true },
+    { spread: 1.7, pinkyBent: true, down: true },
+    { foldedThree: true }, { foldedThree: true, mirror: true },
+    { spread: 1.7, thumbOut: true },
+    { spread: 1.7, thumbOut: true, down: true }
+  ]) {
+    const r = await browserRuntime();
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    for (let at = 100; at <= 750; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [fourFingerPose(options)] }, at, 20);
+      assert.notEqual(engine.state.letter, 'B', JSON.stringify(options));
+    }
+    assert.equal(signs.includes('B'), false, JSON.stringify(options));
+  }
+});
+
+test('F com pinça e W com mínimo fechado confirmam sem virar B', async () => {
+  for (const mirror of [false, true]) {
+    for (const [letter, options] of [
+      ['F', { indexBent: true }], ['W', { pinkyBent: true, spread: 1.7 }]
+    ]) {
+      const r = await browserRuntime();
+      const engine = new r.LibrasEngine();
+      const signs = [];
+      engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+      for (let at = 100; at <= 750; at += 50) {
+        r.clock.now = at;
+        engine.update({ landmarks: [fourFingerPose({ ...options, mirror })] }, at, 20);
+        assert.notEqual(engine.state.letter, 'B');
+      }
+      assert.deepEqual(signs, [letter], `espelho ${mirror}, controle ${letter}`);
+    }
+  }
+});
+
+test('B não confirma quatro dedos com abertura lateral próxima de duas larguras', async () => {
+  for (const mirror of [false, true]) {
+    const r = await browserRuntime();
+    const game = new r.Game();
+    const engine = new r.LibrasEngine();
+    new r.UI(engine, game, new r.ForcaGame());
+    const diag = r.window.librasArcadeDiagnostics;
+    r.cards[0].click();
+    game.target = 'B';
+    diag.startCalibration({ controlPose: 'four_spread',
+      physicalHand: mirror ? 'left' : 'right', orientation: 'front',
+      distance: 'medium', mirrored: mirror });
+    for (let at = 100; at <= 800; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [fourFingerPose({ spread: 2.05, mirror,
+        projection: .85, angle: .25, depth: .01, jitter: at % 100 ? .002 : -.002 })] }, at, 20);
+    }
+    const events = diag.stopCalibration().events;
+    const frames = events.filter((event) => event.type === 'recognition' && event.handPresent);
+    assert.ok(frames.some((event) => event.lateralRatioIM > 1.9 &&
+      event.lateralRatioMR > 1.9 && event.lateralRatioRP > 1.9));
+    assert.ok(frames.every((event) => event.scoreB < .55));
+    assert.equal(events.some((event) => event.type === 'signconfirmed' && event.letter === 'B'), false);
+    assert.equal(events.some((event) => event.type === 'game_decision' &&
+      event.letter === 'B' && event.reason === 'accepted'), false);
+  }
+});
+
+test('quatro dedos separados não sustentam W ou F nas duas projeções', async () => {
+  for (const mirror of [false, true]) {
+    const r = await browserRuntime();
+    const engine = new r.LibrasEngine();
+    const signs = [];
+    engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+    const candidates = [];
+    for (let at = 100; at <= 850; at += 50) {
+      r.clock.now = at;
+      const pose = fourFingerPose({ spread: 2.05, mirror, projection: .85,
+        angle: .25, depth: .01, jitter: at % 100 ? .002 : -.002 });
+      engine.update({ landmarks: [pose] }, at, 20);
+      candidates.push(engine.state.letter);
+    }
+    assert.ok(candidates.every((letter) => !['B', 'W', 'F'].includes(letter)),
+      `espelho ${mirror}: ${candidates.join(',')}`);
+    assert.ok(signs.every((letter) => !['B', 'W', 'F'].includes(letter)),
+      `espelho ${mirror}: ${signs.join(',')}`);
+  }
+});
+
+test('controle de quatro dedos separados não confirma B, W ou F após pausa e retomada', async () => {
+  const r = await browserRuntime();
+  const engine = new r.LibrasEngine();
+  const signs = [];
+  engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+  for (let at = 100; at <= 500; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [fourFingerPose({ spread: 2.1,
+      jitter: at % 100 ? .003 : -.003 })] }, at, 20);
+  }
+  for (let at = 550; at <= 900; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [] }, at, 20);
+  }
+  for (let at = 950; at <= 1750; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [fourFingerPose({ spread: 2.1, mirror: true,
+      projection: .75, jitter: at % 100 ? .003 : -.003 })] }, at, 20);
+  }
+  assert.equal(signs.some((letter) => ['B', 'W', 'F'].includes(letter)), false);
+});
+
+test('calibração opcional registra abertura médio-anelar e escore W sem landmarks', async () => {
+  const r = await browserRuntime();
+  const engine = new r.LibrasEngine();
+  const diag = r.window.librasArcadeDiagnostics;
+  diag.startCalibration({ controlPose: 'four_spread', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  r.clock.now = 100;
+  engine.update({ landmarks: [fourFingerPose({ spread: 2.05 })] }, 100, 20);
+  const frame = diag.stopCalibration().events.find((event) =>
+    event.type === 'recognition' && event.handPresent);
+  assert.equal(typeof frame.spreadMR, 'number');
+  assert.equal(typeof frame.scoreW, 'number');
+  assert.equal(frame.scoreW, 0);
+  assert.equal('landmarks' in frame, false);
+  diag.enable();
+  r.clock.now = 200;
+  engine.update({ landmarks: [fourFingerPose({ spread: 2.05 })] }, 200, 20);
+  const ordinary = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal('scoreW' in ordinary, false);
+  assert.equal('spreadMR' in ordinary, false);
+});
+
+test('B unido é entregue ao Treino e Soletrar após hold; cooldown bloqueia repetição', async () => {
+  for (const mode of ['practice', 'word']) {
+    const r = await browserRuntime();
+    const game = new r.Game();
+    const engine = new r.LibrasEngine();
+    new r.UI(engine, game, new r.ForcaGame());
+    const diag = r.window.librasArcadeDiagnostics;
+    diag.enable();
+    r.cards[mode === 'practice' ? 0 : 1].click();
+    game.target = mode === 'practice' ? 'B' : 'BA';
+    game.wordIndex = 0;
+    for (let at = 100; at <= 1250; at += 50) {
+      r.clock.now = at;
+      engine.update({ landmarks: [fourFingerPose({ mirror: mode === 'word', spread: 1.7 })] }, at, 20);
+    }
+    const events = diag.read().events;
+    assert.equal(events.filter((event) => event.type === 'signconfirmed' && event.letter === 'B').length, 1);
+    assert.ok(events.some((event) => event.type === 'ui_received' && event.letter === 'B'));
+    assert.ok(events.some((event) => event.type === 'game_decision' && event.letter === 'B' &&
+      event.mode === mode && event.reason === 'accepted'));
+  }
+});
+
+test('controle de quatro dedos separados recebe rótulo diagnóstico próprio e razões laterais', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  const engine = new r.LibrasEngine();
+  diag.startCalibration({ controlPose: 'four_spread', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  r.clock.now = 100;
+  engine.update({ landmarks: [fourFingerPose({ spread: 3.2 })] }, 100, 20);
+  const result = diag.stopCalibration();
+  assert.equal(result.calibration.intendedLetter, null);
+  assert.equal(result.calibration.controlPose, 'four_spread');
+  assert.equal(result.calibration.confirmation, 'absent');
+  const frame = result.events.find((event) => event.type === 'recognition' && event.handPresent);
+  assert.ok(frame.lateralRatioIM > 3 && frame.lateralRatioMR > 3 && frame.lateralRatioRP > 3);
+  assert.equal(frame.scoreB, 0);
+  assert.equal('landmarks' in frame, false);
+  assert.throws(() => diag.startCalibration({ intendedLetter: 'B', controlPose: 'four_spread',
+    physicalHand: 'right', orientation: 'front', distance: 'medium', mirrored: false }),
+  /letra ou postura/);
+  diag.startCalibration({ intendedLetter: 'B', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  assert.equal('controlPose' in diag.read().calibration, false);
+  diag.stopCalibration();
+});
+
+test('B tolera oscilação moderada e projeção oblíqua e exige liberação para repetir', async () => {
+  const r = await browserRuntime();
+  const engine = new r.LibrasEngine();
+  const signs = [];
+  engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+  for (let at = 100; at <= 750; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [fourFingerPose({ spread: at % 100 ? 1.74 : 1.5,
+      projection: .7, angle: .4, mirror: true, depth: .02 })] }, at, 20);
+    assert.equal(engine.state.letter, 'B');
+  }
+  for (let at = 800; at <= 1250; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [] }, at, 20);
+  }
+  for (let at = 1650; at <= 2400; at += 50) {
+    r.clock.now = at;
+    engine.update({ landmarks: [fourFingerPose({ spread: 1.7, projection: .7,
+      angle: .4, mirror: true })] }, at, 20);
+  }
+  assert.deepEqual(signs, ['B', 'B']);
+});
+
 test('cooldown confirma gesto estático uma vez e mantém a pose prolongada bloqueada', async () => {
   const r = await browserRuntime();
   const { engine, signs, sample } = temporalRig(r);
@@ -2902,6 +3176,60 @@ test('calibração E/M/R expõe concorrentes e escalares sem landmarks', async (
   }
   assert.equal(diag.read().calibration.physicalHand, 'left');
   assert.equal(diag.read().events.some((event) => 'landmarks' in event), false);
+});
+
+test('calibração mede flexão por articulação e pontas sem alterar a classificação', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  const engine = new r.LibrasEngine();
+  const hand = (folded, mirror = false) => {
+    const lm = Array.from({ length: 21 }, () => ({ x: .5, y: .7, z: 0 }));
+    lm[0] = { x: .5, y: .85, z: 0 };
+    for (const [mcp, x] of [[5, .38], [9, .5], [13, .62], [17, .75]]) {
+      lm[mcp] = { x, y: .6, z: 0 };
+      lm[mcp + 1] = { x: folded ? x + .1 : x, y: folded ? .55 : .48, z: 0 };
+      lm[mcp + 2] = { x: folded ? x + .2 : x, y: folded ? .5 : .36, z: 0 };
+      lm[mcp + 3] = { x: folded ? x + .3 : x, y: folded ? .45 : .24, z: 0 };
+    }
+    lm[4] = { x: .48, y: .68, z: 0 };
+    return mirror ? lm.map((p) => ({ ...p, x: 1 - p.x })) : lm;
+  };
+  const capture = (lm, intendedLetter, at, mirror = false) => {
+    diag.startCalibration({ intendedLetter, physicalHand: mirror ? 'left' : 'right',
+      orientation: 'front', distance: 'medium', mirrored: mirror });
+    engine.update({ landmarks: [lm] }, at, 20);
+    return diag.stopCalibration().events.find((event) => event.type === 'recognition');
+  };
+  const b = capture(hand(false), 'B', 100);
+  const m = capture(hand(true), 'M', 200);
+  const mirrored = capture(hand(true, true), 'M', 300, true);
+  for (const sample of [b, m, mirrored]) {
+    for (const field of ['mcpFoldIndex', 'mcpFoldMiddle', 'mcpFoldRing',
+      'pipFoldIndex', 'pipFoldMiddle', 'pipFoldRing',
+      'dipFoldIndex', 'dipFoldMiddle', 'dipFoldRing',
+      'tipPalmIndex', 'tipPalmMiddle', 'tipPalmRing', 'tipPalmPinky',
+      'thumbPinkyPinch']) assert.ok(Number.isFinite(sample[field]), field);
+    const mean = (sample.tipPalmIndex + sample.tipPalmMiddle +
+      sample.tipPalmRing + sample.tipPalmPinky) / 4;
+    assert.ok(Math.abs(mean - sample.tipPalmMean) < 1e-10);
+    assert.equal('landmarks' in sample, false);
+  }
+  assert.ok(b.mcpFoldMiddle < 1);
+  assert.ok(m.mcpFoldMiddle > 50);
+  assert.ok(m.extMiddle > .5);
+  assert.ok(m.curlMiddle < .01);
+  assert.ok(m.pipFoldMiddle < 1);
+  assert.ok(m.dipFoldMiddle < 1);
+  assert.ok(Math.abs(m.mcpFoldMiddle - mirrored.mcpFoldMiddle) < 1e-10);
+  assert.equal('mcpFoldMiddle' in engine.state.features, false);
+
+  diag.enable();
+  engine.update({ landmarks: [hand(true)] }, 400, 20);
+  const ordinary = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal('mcpFoldMiddle' in ordinary, false);
+  assert.equal('tipPalmMiddle' in ordinary, false);
+  assert.equal(ordinary.candidate, m.candidate);
+  assert.ok(Math.abs(ordinary.score - m.score) < 1e-10);
 });
 
 test('calibração distingue aproximação projetada sem interseção de U paralelo', async () => {

@@ -2,6 +2,38 @@
 
 **Data:** 20/10/2026. **Ambiente da auditoria:** PowerShell, Node.js `v24.18.0`, Python `3.11.9`. **Base:** `9063154f5661c50fc7312059aa769709615b3e70`.
 
+## Falso W/F após B — FASE 03.3B-2D.2
+
+O [replay e protocolo](../docs/qa/Libras_Arcade_Correcao_WF_033B2D2_2026-10-27.md) confrontam quatro tentativas reais com as regras W/F. Nos intervalos pré-confirmação preservados, os gates novos projetam W/F abaixo de 0,55 sem alterar B. O teste negativo falhou primeiro por W e, com só W limitado, por F; após os dois gates passou. Fixtures espelhadas verificam positivos W/F e negativos de quatro dedos separados, pausa/retomada e ausência de `signconfirmed(B/W/F)`. A instrumentação voluntária passou a registrar `scoreW` e `spreadMR`; o teste respectivo falhou antes da adição e garante ausência de landmarks. As capturas não incluem controles reais positivos F/W nem landmarks para replay integral; V pode substituir W/F nos controles, e U no trecho inicial do B esquerdo. Testes automatizados não homologam o uso físico.
+
+`npm.cmd test`: **201/201**; `npm.cmd run test:camera`: **188/188**; `npm.cmd run test:performance`: **13/13**. `node --check` em `js/*.js` e no teste alterado, validador de specs, `git diff --check` e `git diff --cached --check` passaram. A suíte de performance verifica contratos lógicos, sem FPS/CPU/RAM físicos.
+
+## Webcam e revisão de B — FASE 03.3B-2D.1
+
+O [relatório desta rodada](../docs/qa/Libras_Arcade_Correcao_B_033B2D1_2026-10-27.md) confronta quatro capturas reais com a regra B. A reconstrução do escore antigo teve erro máximo zero; o replay da nova faixa preserva os B unidos em 11/11 e 24/30 frames vencedores e reduz os controles `four_spread` a zero frames vencedores de B nos intervalos disponíveis. Isso não é uma nova homologação do motor em webcam. Um teste novo de abertura próxima de duas larguras falhou antes da correção e passou depois, verificando escore, confirmação e decisão do Treino. Outro testa F com pinça e W com mínimo fechado, espelhados. A antiga oscilação sintética em razão 1,9 foi revista para 1,74 porque 1,9 ficou próxima do controle separado real.
+
+`npm.cmd test`: **198/198**; `npm.cmd run test:camera`: **185/185**; `npm.cmd run test:performance`: **13/13**. A última suíte verifica contratos, sem medir custo físico; a regra usa as mesmas três razões e operações fuzzy por inferência. Sintaxe, validador de specs e `git diff --check` constam da verificação final desta fase. A captura esquerda `four_spread` teve `confirmationCount=2` e só um evento de confirmação retido; não se atribuiu identidade à outra confirmação.
+
+## Integração seletiva e B — FASE 03.3B-2D
+
+O [relatório técnico](../docs/qa/Libras_Arcade_Integracao_B_033B2D_2026-10-26.md) compara regras externas e a atual sem executá-las ou mesclá-las. Cinco testes novos cobrem B unido com ambas as projeções espelhadas, abertura natural, quatro dedos claramente separados, W, modelos M fechados e três dedos para baixo, polegar aberto, oscilação/projeção, hold de 600 ms, entrega ao Treino/Soletrar, cooldown/rearmamento e a captura `four_spread` sem letra falsa. O teste negativo de quatro separados falhou no B anterior e passou com a condição lateral. As 16 capturas E/M/B anteriores contêm apenas escalares: M teria B=0 pelo polegar observado, mas faltam M–R/R–mínimo para reconstruir o escore B completo dos controles B. Essas fixtures não validam a anatomia de M nem homologam B com webcam.
+
+`npm.cmd test`: **196/196**; `npm.cmd run test:camera`: **183/183**; `npm.cmd run test:performance`: **13/13**. `node --check` de `js/*.js` e do teste alterado, validador de specs, `git diff --check` e `git diff --cached --check` passaram. A última suíte verifica contratos lógicos; o custo de CPU/FPS/RAM da nova razão lateral não foi medido em webcam.
+
+## Instrumentação anatômica opcional — FASE 03.3B-2C.2
+
+O [protocolo visual e as duas propostas geométricas condicionais](../docs/qa/Libras_Arcade_Preparacao_Visual_EM_033B2C2_2026-10-26.md) usam o alfabeto manual do IF Baiano e as 16 capturas E/M/A/O/S/B anteriores. O teste novo falhou inicialmente pela ausência de `mcpFoldIndex` e passou após acrescentar somente escalares à calibração rotulada. Verifica desvio no MCP com `curlMiddle` quase zero e `extMiddle` alto em geometria construída, igualdade de `tipPalmMean` com a média das quatro distâncias, espelhamento, ausência de landmarks registrados e ausência dos campos novos fora da calibração e de `state.features`. Essa fixture prova a fórmula, não a anatomia das capturas M nem a validade de E.
+
+`npm.cmd test`: **191/191**; `npm.cmd run test:camera`: **178/178**; `npm.cmd run test:performance`: **13/13**. `node --check` dos dois módulos alterados e do teste passou. Nenhuma mudança funcional E/M foi feita; o custo dos novos escalares na webcam e a adequação real de M/B seguem sem medição visual. A comparação visual exige quatro inspeções pareadas M/B por mão física antes de formular limiares.
+
+## Preparação de QA — FASE 03.3B-2C, E/M
+
+A [auditoria e o protocolo de coleta](../docs/qa/Libras_Arcade_Auditoria_EM_033B2C_2026-10-26.md) mapearam os componentes de `RULES.E/M`, os controles S/A/O/N e a concorrente B. `startCalibration()` já expõe os escores relevantes, features, dois primeiros colocados e eventos `hold_reset`, `signconfirmed`, `ui_received` e `game_decision`, uma amostra por inferência, sem guardar landmarks. A matriz inicial previa 12 tentativas separadas por letra e mão física; o contraste real posterior está registrado abaixo.
+
+## Capturas reais — FASE 03.3B-2C.1, contraste E/M
+
+O [diagnóstico das 16 capturas](../docs/qa/Libras_Arcade_Diagnostico_EM_Rodada2_033B2C1_2026-10-26.md) reproduz as primeiras confirmações e decisões do JSON externo `qa-em-fase-033b2c-webcam teste 2.json`. As quatro primeiras capturas repetem exatamente o primeiro JSON; apenas 12 foram acrescentadas. E direita/esquerda emitiram O/A; quatro M emitiram B, com `scoreM` mediano zero e dedos detectados quase retos. Controles B/A/O foram aceitos. S e N emitiram O/U, respectivamente, e esses achados pertencem às branches dos colegas. Seis anéis atingiram 120 eventos e uma captura E teve duas confirmações. As medianas por captura não estimam precisão nem comprovam a postura física. Nenhuma regra ou instrumento foi alterado; E/M continuam sem homologação. Nesta etapa documental, não foi repetida a suíte automatizada, que não valida a causa física das capturas.
+
 ## Webcam real — homologação frontal inicial da FASE 03.3B-2B.3
 
 O [relatório de quatro capturas rotuladas](../docs/qa/Libras_Arcade_Homologacao_RU_033B2B3_2026-10-26.md) registra, no Treino, primeira confirmação correta e aceita de R estendido cruzado e U paralelo em ambas as mãos (`orientation=front`, `distance=medium`, `mirrored=true`). Antes da primeira confirmação, a candidata pretendida ocorreu em 12/15 e 11/12 frames com mão para R, e em 12/12 e 11/21 para U. Os tempos desde a primeira candidata até a confirmação foram aproximadamente 662, 666, 645 e 633 ms, respectivamente. As margens R−U no frame de confirmação foram cerca de 0,021 e 0,018. Capturas R/direita e U/esquerda tiveram confirmações adicionais; a primeira atingiu 120/120 eventos e perdeu o início. Estas contagens são correlacionadas dentro de quatro ensaios, não uma estimativa de precisão. O JSON escalar bruto permanece fora do repositório; faltam controles de falsa interseção, oblíqua/lateral, espelhamento alternativo, outros modos e medição de desempenho real.

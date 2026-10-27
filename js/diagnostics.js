@@ -4,25 +4,31 @@ const SAMPLE_MS = 200;
 const PHYSICAL_HANDS = new Set(['left', 'right']);
 const ORIENTATIONS = new Set(['front', 'oblique', 'side']);
 const DISTANCES = new Set(['near', 'medium', 'far']);
+const CONTROL_POSES = new Set(['four_spread']);
 const SAFE_FIELDS = new Set([
   'handPresent', 'landmarksValid', 'candidate', 'candidateEligible', 'score', 'second', 'secondScore',
   'gap', 'phase', 'stabilizingMs', 'cooldownRemainingMs', 'motionLetter',
   'motionSamples', 'motionProgress', 'motionStatus', 'reason', 'letter',
   'mode', 'screen', 'expected', 'wordIndex', 'round', 'timeLeft', 'accepted',
-  'uiUpdated', 'intendedLetter', 'physicalHand', 'orientation', 'distance', 'mirrored',
+  'uiUpdated', 'intendedLetter', 'controlPose', 'physicalHand', 'orientation', 'distance', 'mirrored',
   'elapsedMs', 'extIndex', 'extMiddle', 'extRing', 'extPinky',
   'curlIndex', 'curlMiddle', 'curlRing', 'curlPinky', 'thumbOut',
   'thumbAcross', 'thumbIndexPinch', 'thumbMiddlePinch', 'thumbBetweenIM',
-  'thumbIndexAngle', 'spreadIM', 'pointAngleIndex', 'pointAngleIM',
+  'thumbIndexAngle', 'spreadIM', 'spreadMR', 'lateralRatioIM', 'lateralRatioMR', 'lateralRatioRP',
+  'pointAngleIndex', 'pointAngleIM',
   'palmProjectedArea', 'palmDepthSpan', 'fingerAngleIM', 'tipClusterIMR',
   'tipPalmMean', 'thumbFingerDepth', 'thumbIndexMcp', 'thumbMiddleMcp',
-  'thumbRingPinch', 'tipDepthIM', 'thumbPinkyMcp', 'thumbRingMcp',
+  'tipPalmIndex', 'tipPalmMiddle', 'tipPalmRing', 'tipPalmPinky',
+  'mcpFoldIndex', 'mcpFoldMiddle', 'mcpFoldRing',
+  'pipFoldIndex', 'pipFoldMiddle', 'pipFoldRing',
+  'dipFoldIndex', 'dipFoldMiddle', 'dipFoldRing',
+  'thumbRingPinch', 'thumbPinkyPinch', 'tipDepthIM', 'thumbPinkyMcp', 'thumbRingMcp',
   'crossIM', 'crossOrderIM', 'crossDepthIM', 'palmAxisIM',
   'crossGap2DIM', 'crossGap3DIM', 'crossGap3DAt2DIM',
   'crossProgressIndex2D', 'crossProgressMiddle2D', 'crossOrder2DIM',
   'scoreA', 'scoreB', 'scoreC', 'scoreF', 'scoreG', 'scoreI', 'scoreK',
   'scoreE', 'scoreM', 'scoreN', 'scoreO', 'scoreP', 'scoreR', 'scoreS',
-  'scoreT', 'scoreU', 'scoreV', 'scoreY',
+  'scoreT', 'scoreU', 'scoreV', 'scoreW', 'scoreY',
   'stemDescent', 'stemSide', 'stemConsistency', 'maxStemRun',
   'stemEndIndex', 'troughIndex', 'shortHook',
   'wristStep', 'wristGapMs', 'wristLimit',
@@ -61,20 +67,26 @@ class RecognitionDiagnostics {
   }
 
   /** Inicia uma única tentativa rotulada, voluntária e sem persistência. */
-  startCalibration({ intendedLetter, physicalHand, orientation, distance, mirrored } = {}) {
-    if (typeof intendedLetter !== 'string' || !/^[A-Z]$/.test(intendedLetter) ||
+  startCalibration({ intendedLetter, controlPose, physicalHand, orientation, distance, mirrored } = {}) {
+    const letterAttempt = typeof intendedLetter === 'string' && /^[A-Z]$/.test(intendedLetter) &&
+      controlPose === undefined;
+    const controlAttempt = intendedLetter === undefined && CONTROL_POSES.has(controlPose);
+    if ((!letterAttempt && !controlAttempt) ||
         !PHYSICAL_HANDS.has(physicalHand) || !ORIENTATIONS.has(orientation) ||
         !DISTANCES.has(distance) || typeof mirrored !== 'boolean') {
-      throw new TypeError('Informe letra, mão, orientação, distância e espelhamento válidos para a calibração.');
+      throw new TypeError('Informe letra ou postura de controle, mão, orientação, distância e espelhamento válidos.');
     }
     this.enable();
     const at = performance.now();
     this._calibration = { at };
+    const label = controlAttempt
+      ? { intendedLetter: null, controlPose, physicalHand, orientation, distance, mirrored }
+      : { intendedLetter, physicalHand, orientation, distance, mirrored };
     this._calibrationSummary = {
-      intendedLetter, physicalHand, orientation, distance, mirrored,
+      ...label,
       confirmation: 'absent', firstConfirmedLetter: null, confirmationCount: 0
     };
-    this.record('calibration_start', { intendedLetter, physicalHand, orientation, distance, mirrored }, at);
+    this.record('calibration_start', label, at);
   }
 
   /** Encerra a tentativa e mantém a leitura disponível até clear()/disable(). */
@@ -121,8 +133,9 @@ class RecognitionDiagnostics {
       this._calibrationSummary.confirmationCount++;
       if (this._calibrationSummary.firstConfirmedLetter === null) {
         this._calibrationSummary.firstConfirmedLetter = entry.letter ?? null;
-        this._calibrationSummary.confirmation = entry.letter === this._calibrationSummary.intendedLetter
-          ? 'correct' : 'incorrect';
+        this._calibrationSummary.confirmation = this._calibrationSummary.controlPose
+          ? 'unexpected' : entry.letter === this._calibrationSummary.intendedLetter
+            ? 'correct' : 'incorrect';
       }
     }
     this._events[this._next] = entry;

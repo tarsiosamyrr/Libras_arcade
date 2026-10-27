@@ -67,6 +67,8 @@ export const CONFIG = {
   PINCH_ON: 0.42,          // ponta do polegar tocando outra ponta (F, O)
   SPREAD_TOGETHER: 0.22,   // dedos colados (U)
   SPREAD_APART: 0.34,      // dedos separados (V, W)
+  B_LATERAL_FULL: 1.65,    // até esta razão ponta/base, B não perde escore por abertura lateral
+  B_LATERAL_ZERO: 2.2,     // acima desta razão, o par afasta demais as pontas para B
   MIN_SCORE: 0.55,         // escore heurístico mínimo; não é probabilidade de acerto
   HOLD_MS: 600,            // tempo segurando o sinal para confirmar
   RELEASE_GRACE_MS: 250,   // tolerância a "tremores" de detecção
@@ -162,6 +164,19 @@ function handScale(lm) {
 
 function fingerExt(lm, tipIdx, mcpIdx, wrist, scale) {
   return dist(lm[tipIdx], wrist) / scale - dist(lm[mcpIdx], wrist) / scale;
+}
+
+/** Abertura lateral das pontas dividida pela largura entre as bases do par.
+ * A projeção no eixo dos MCPs ignora a diferença natural de comprimento dos dedos.
+ * É invariável a espelho e rotação no plano; bases sobrepostas invalidam o par. */
+function lateralTipRatio(lm, firstMcp, secondMcp, firstTip, secondTip) {
+  const dx = lm[secondMcp].x - lm[firstMcp].x;
+  const dy = lm[secondMcp].y - lm[firstMcp].y;
+  const baseSquared = dx * dx + dy * dy;
+  if (baseSquared < 1e-8) return Infinity;
+  const tipDx = lm[secondTip].x - lm[firstTip].x;
+  const tipDy = lm[secondTip].y - lm[firstTip].y;
+  return Math.abs(tipDx * dx + tipDy * dy) / baseSquared;
 }
 
 // curvatura de um dedo: ~0 = reto (colinear), ~0.3 = dobrado em ângulo reto
@@ -336,6 +351,9 @@ function crossingGeometry(lm, scale) {
   const tipDeltaY = lm[LM.INDEX_TIP].y - lm[LM.MIDDLE_TIP].y;
   return {
     palmAxisIM: projectedLength / scale,
+    lateralRatioIM: lateralTipRatio(lm, LM.INDEX_MCP, LM.MIDDLE_MCP, LM.INDEX_TIP, LM.MIDDLE_TIP),
+    lateralRatioMR: lateralTipRatio(lm, LM.MIDDLE_MCP, LM.RING_MCP, LM.MIDDLE_TIP, LM.RING_TIP),
+    lateralRatioRP: lateralTipRatio(lm, LM.RING_MCP, LM.PINKY_MCP, LM.RING_TIP, LM.PINKY_TIP),
     crossOrder2DIM: projectedLength === 0 ? 0 :
       (tipDeltaX * axisX + tipDeltaY * axisY) / (projectedLength * scale),
     crossOrderIM: axisLength === 0 ? 0 : (
@@ -426,7 +444,19 @@ function calibrationCrossingGeometry(lm, scale) {
   };
 }
 
-/** Medidas adicionais só na captura rotulada; área projetada não prova orientação 3D. */
+/** Desvio entre segmentos 3D consecutivos, em graus (0 = alinhados).
+ * No MCP usa pulso→MCP como aproximação do eixo metacarpal, não uma articulação observada. */
+function calibrationJointFoldDeg(a, b, c) {
+  const abX = b.x - a.x, abY = b.y - a.y, abZ = (b.z ?? 0) - (a.z ?? 0);
+  const bcX = c.x - b.x, bcY = c.y - b.y, bcZ = (c.z ?? 0) - (b.z ?? 0);
+  const length = Math.hypot(abX, abY, abZ) * Math.hypot(bcX, bcY, bcZ);
+  if (length < 1e-8) return null;
+  const cosine = (abX * bcX + abY * bcY + abZ * bcZ) / length;
+  return Math.acos(Math.max(-1, Math.min(1, cosine))) * 180 / Math.PI;
+}
+
+/** Medidas adicionais só na captura rotulada; ângulos usam coordenadas MediaPipe
+ * normalizadas e não são ângulos anatômicos calibrados. */
 function calibrationGeometry(lm, scale) {
   const wrist = lm[LM.WRIST];
   const indexMcp = lm[LM.INDEX_MCP];
@@ -442,6 +472,10 @@ function calibrationGeometry(lm, scale) {
       z: sum.z + (lm[index].z ?? 0) / 4
     }), { x: 0, y: 0, z: 0 });
   const fingerTips = [LM.INDEX_TIP, LM.MIDDLE_TIP, LM.RING_TIP, LM.PINKY_TIP];
+  const tipPalmIndex = dist(lm[LM.INDEX_TIP], palmCenter) / scale;
+  const tipPalmMiddle = dist(lm[LM.MIDDLE_TIP], palmCenter) / scale;
+  const tipPalmRing = dist(lm[LM.RING_TIP], palmCenter) / scale;
+  const tipPalmPinky = dist(lm[LM.PINKY_TIP], palmCenter) / scale;
   return {
     palmProjectedArea: Math.abs((indexMcp.x - wrist.x) * (pinkyMcp.y - wrist.y) -
       (indexMcp.y - wrist.y) * (pinkyMcp.x - wrist.x)) / (scale * scale),
@@ -449,21 +483,32 @@ function calibrationGeometry(lm, scale) {
     fingerAngleIM: vecAngleUpDeg(imTipX - imMcpX, imTipY - imMcpY),
     tipClusterIMR: (dist(lm[LM.INDEX_TIP], lm[LM.MIDDLE_TIP]) +
       dist(lm[LM.MIDDLE_TIP], lm[LM.RING_TIP])) / (2 * scale),
-    tipPalmMean: fingerTips.reduce((sum, index) => sum + dist(lm[index], palmCenter), 0) / (4 * scale),
+    tipPalmMean: (tipPalmIndex + tipPalmMiddle + tipPalmRing + tipPalmPinky) / 4,
+    tipPalmIndex, tipPalmMiddle, tipPalmRing, tipPalmPinky,
+    mcpFoldIndex: calibrationJointFoldDeg(wrist, lm[LM.INDEX_MCP], lm[LM.INDEX_PIP]),
+    mcpFoldMiddle: calibrationJointFoldDeg(wrist, lm[LM.MIDDLE_MCP], lm[LM.MIDDLE_PIP]),
+    mcpFoldRing: calibrationJointFoldDeg(wrist, lm[LM.RING_MCP], lm[LM.RING_PIP]),
+    pipFoldIndex: calibrationJointFoldDeg(lm[LM.INDEX_MCP], lm[LM.INDEX_PIP], lm[LM.INDEX_DIP]),
+    pipFoldMiddle: calibrationJointFoldDeg(lm[LM.MIDDLE_MCP], lm[LM.MIDDLE_PIP], lm[LM.MIDDLE_DIP]),
+    pipFoldRing: calibrationJointFoldDeg(lm[LM.RING_MCP], lm[LM.RING_PIP], lm[LM.RING_DIP]),
+    dipFoldIndex: calibrationJointFoldDeg(lm[LM.INDEX_PIP], lm[LM.INDEX_DIP], lm[LM.INDEX_TIP]),
+    dipFoldMiddle: calibrationJointFoldDeg(lm[LM.MIDDLE_PIP], lm[LM.MIDDLE_DIP], lm[LM.MIDDLE_TIP]),
+    dipFoldRing: calibrationJointFoldDeg(lm[LM.RING_PIP], lm[LM.RING_DIP], lm[LM.RING_TIP]),
     thumbFingerDepth: ((lm[LM.THUMB_TIP].z ?? 0) - fingerTips.reduce((sum, index) =>
       sum + (lm[index].z ?? 0), 0) / 4) / scale,
     thumbIndexMcp: dist(lm[LM.THUMB_TIP], lm[LM.INDEX_MCP]) / scale,
     thumbMiddleMcp: dist(lm[LM.THUMB_TIP], lm[LM.MIDDLE_MCP]) / scale,
     thumbRingPinch: dist(lm[LM.THUMB_TIP], lm[LM.RING_TIP]) / scale,
+    thumbPinkyPinch: dist(lm[LM.THUMB_TIP], lm[LM.PINKY_TIP]) / scale,
     tipDepthIM: Math.abs((lm[LM.INDEX_TIP].z ?? 0) - (lm[LM.MIDDLE_TIP].z ?? 0)) / scale
   };
 }
 
 /**
  * Cada regra devolve uma confiança 0..1 a partir das features.
- * A confiança final da letra é a MÉDIA dos componentes checados — assim,
- * "quase acertar" um sinal já dá algum feedback visual (barra parcial),
- * e não é um sim/não seco.
+ * Em geral a confiança é a MÉDIA dos componentes checados, com feedback
+ * gradual. Regras com traços indispensáveis, como B, F e W, limitam essa
+ * média pelo fator geométrico obrigatório.
  */
 const RULES = {
   A(f) {
@@ -480,13 +525,19 @@ const RULES = {
     if (thumbSeparate === 1) return shapeScore;
     return shapeScore * (5 + thumbSeparate) / 6;
   },
-  B(f) {
-    return avg(
+  B(f, geometry) {
+    // Um único dedo flexionado, polegar aberto ou par muito separado descaracteriza B.
+    // A transição local conserva B unido nos controles reais e reduz o controle
+    // four_spread antes que seu escore sustente o hold; cada par é obrigatório.
+    return Math.min(
       fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.thumbAcross, CONFIG.THUMB_TUCK_OFF, CONFIG.THUMB_OUT_ON)
+      fuzzyOff(f.thumbAcross, CONFIG.THUMB_TUCK_OFF, CONFIG.THUMB_OUT_ON),
+      fuzzyOff(geometry.lateralRatioIM, CONFIG.B_LATERAL_FULL, CONFIG.B_LATERAL_ZERO),
+      fuzzyOff(geometry.lateralRatioMR, CONFIG.B_LATERAL_FULL, CONFIG.B_LATERAL_ZERO),
+      fuzzyOff(geometry.lateralRatioRP, CONFIG.B_LATERAL_FULL, CONFIG.B_LATERAL_ZERO)
     );
   },
   D(f) {
@@ -499,12 +550,13 @@ const RULES = {
     );
   },
   F(f) {
-    return avg(
+    const pinch = fuzzyOff(f.thumbIndexPinch, CONFIG.PINCH_ON, CONFIG.PINCH_ON + 0.25);
+    return Math.min(pinch, avg(
       fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.thumbIndexPinch, CONFIG.PINCH_ON, CONFIG.PINCH_ON + 0.25)
-    );
+      pinch
+    ));
   },
   I(f) {
     return avg(
@@ -556,13 +608,14 @@ const RULES = {
     return shapeScore * (1 - CONFIG.V_DOWN_THUMB_DISCOUNT * thumbNear * downScore(f.pointAngleIM));
   },
   W(f) {
-    return avg(
+    const pinkyClosed = fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON);
+    return Math.min(pinkyClosed, avg(
       fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOn(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
-      fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
+      pinkyClosed,
       fuzzyOn(f.spreadMR, CONFIG.SPREAD_TOGETHER, CONFIG.SPREAD_APART)
-    );
+    ));
   },
   Y(f) {
     return avg(
@@ -719,12 +772,12 @@ const RULES = {
 };
 
 // Apenas durante calibração voluntária: concorrentes dos grupos em análise.
-const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'E', 'F', 'G', 'I', 'K', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'Y']);
+const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'E', 'F', 'G', 'I', 'K', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'Y']);
 const CALIBRATION_FEATURES = [
   'extIndex', 'extMiddle', 'extRing', 'extPinky',
   'curlIndex', 'curlMiddle', 'curlRing', 'curlPinky',
   'thumbOut', 'thumbAcross', 'thumbIndexPinch', 'thumbMiddlePinch',
-  'thumbBetweenIM', 'thumbIndexAngle', 'spreadIM', 'pointAngleIndex', 'pointAngleIM',
+  'thumbBetweenIM', 'thumbIndexAngle', 'spreadIM', 'spreadMR', 'pointAngleIndex', 'pointAngleIM',
   'thumbPinkyMcp', 'thumbRingMcp', 'crossIM'
 ];
 
