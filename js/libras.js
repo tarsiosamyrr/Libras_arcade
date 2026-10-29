@@ -576,14 +576,20 @@ const RULES = {
       fuzzyBand(f.thumbIndexAngle, CONFIG.THUMB_INDEX_ANGLE_L_LO, CONFIG.THUMB_INDEX_ANGLE_L_HI)
     );
   },
-  O(f) {
-    return avg(
-      fuzzyOff(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON + 0.15),
-      fuzzyOff(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON + 0.15),
-      fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON + 0.15),
-      fuzzyOff(f.thumbMiddlePinch, CONFIG.PINCH_ON, CONFIG.PINCH_ON + 0.25)
-    );
-  },
+ O(f) {
+  const shapeScore = avg(
+    fuzzyOff(f.extIndex, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON + 0.15),
+    fuzzyOff(f.extMiddle, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON + 0.15),
+    fuzzyOff(f.extRing, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON + 0.15),
+    fuzzyOff(f.thumbMiddlePinch, CONFIG.PINCH_ON, CONFIG.PINCH_ON + 0.25)
+  );
+
+  // Gate experimental: O exige pinça polegar–médio próxima.
+  // Limiares derivados das capturas E/S/A/O, ainda não homologados.
+  const oPinchGate = fuzzyOff(f.thumbMiddlePinch, 0.22, 0.50);
+
+  return Math.min(shapeScore, oPinchGate);
+},
 
   U(f) {
   const ringClosed = fuzzyOff(
@@ -649,15 +655,26 @@ const RULES = {
 
   /* ------------------------ novas letras estáticas ------------------------ */
 
-  C(f) {
-    return avg(
-      fuzzyBand(f.curlIndex, CONFIG.CURL_HOOK_LO, CONFIG.CURL_HOOK_HI),
-      fuzzyBand(f.curlMiddle, CONFIG.CURL_HOOK_LO, CONFIG.CURL_HOOK_HI),
-      fuzzyBand(f.curlRing, CONFIG.CURL_HOOK_LO, CONFIG.CURL_HOOK_HI),
-      fuzzyBand(f.curlPinky, CONFIG.CURL_HOOK_LO, CONFIG.CURL_HOOK_HI),
-      fuzzyOff(f.thumbMiddlePinch, CONFIG.PINCH_ON, CONFIG.PINCH_ON + 0.35)
-    );
-  },
+C(f) {
+  const thumbOpen = fuzzyOn(
+    f.thumbMiddlePinch,
+    CONFIG.PINCH_ON,
+    CONFIG.PINCH_ON + 0.35
+  );
+
+  const shapeScore = avg(
+    fuzzyBand(f.curlIndex, CONFIG.CURL_HOOK_LO, CONFIG.CURL_HOOK_HI),
+    fuzzyBand(f.curlMiddle, CONFIG.CURL_HOOK_LO, CONFIG.CURL_HOOK_HI),
+    fuzzyBand(f.curlRing, CONFIG.CURL_HOOK_LO, CONFIG.CURL_HOOK_HI),
+    fuzzyBand(f.curlPinky, CONFIG.CURL_HOOK_LO, CONFIG.CURL_HOOK_HI),
+    thumbOpen
+  );
+
+  // C exige separação polegar–médio.
+  // Evita reconhecer O com pinça fechada como C.
+  return Math.min(shapeScore, thumbOpen);
+},
+
   E(f) {
     return avg(
       fuzzyOn(f.curlIndex, CONFIG.CURL_HOOK_HI, CONFIG.CURL_CLOSED_ON),
@@ -777,12 +794,14 @@ const RULES = {
     );
   },
   T(f) {
-    return avg(
+    const shapeScore = avg(
       fuzzyOn(f.curlMiddle, CONFIG.CURL_HOOK_HI, CONFIG.CURL_CLOSED_ON),
       fuzzyOn(f.curlRing, CONFIG.CURL_HOOK_HI, CONFIG.CURL_CLOSED_ON),
       fuzzyOff(f.extPinky, CONFIG.FINGER_EXT_OFF, CONFIG.FINGER_EXT_ON),
       fuzzyOff(f.thumbBetweenIM, CONFIG.THUMB_NEAR_ON, CONFIG.THUMB_NEAR_OFF)
     );
+    const indexExtended = fuzzyOn(f.extIndex, CONFIG.FINGER_EXT_ON, CONFIG.FINGER_EXT_ON + 0.30);
+    return Math.min(shapeScore, indexExtended);
   },
   X(f) {
     return avg(
@@ -795,7 +814,7 @@ const RULES = {
 };
 
 // Apenas durante calibração voluntária: concorrentes dos grupos em análise.
-const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'E', 'F', 'G', 'I', 'K', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'Y']);
+const CALIBRATION_RULES = new Set(['A', 'B', 'C', 'E', 'F', 'G', 'H', 'I', 'K', 'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y']);
 const CALIBRATION_FEATURES = [
   'extIndex', 'extMiddle', 'extRing', 'extPinky',
   'curlIndex', 'curlMiddle', 'curlRing', 'curlPinky',

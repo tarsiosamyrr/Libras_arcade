@@ -47,6 +47,20 @@ function pose(base, dx = 0, dy = 0) {
   return lm;
 }
 
+// Distingue apenas a extensão do indicador; as demais articulações são idênticas.
+function stPose(indexExtended) {
+  const hand = Array.from({ length: 21 }, () => ({ x: .5, y: .7, z: 0 }));
+  hand[0] = { x: .5, y: .9, z: 0 };
+  for (const [mcp, pip, tip, x] of [[5, 6, 8, .38], [9, 10, 12, .5],
+    [13, 14, 16, .62], [17, 18, 20, .74]]) {
+    hand[mcp] = { x, y: .6, z: 0 };
+    hand[pip] = { x, y: .48, z: 0 };
+    hand[tip] = { x, y: indexExtended && mcp === 5 ? .32 : .63, z: 0 };
+  }
+  hand[4] = { x: .38, y: .55, z: 0 };
+  return hand;
+}
+
 function recognitionRig(r) {
   const engine = new r.LibrasEngine();
   const signs = [];
@@ -1393,7 +1407,8 @@ test('fixtures sintéticas K, P e C preservam candidata e confirmação única',
     return hand;
   };
   const curved = () => {
-    // Protege a regra atual de C; não valida o sinal descrito no cadastro.
+    // Fixture geométrica de dedos curvos com polegar afastado.
+    // Não substitui a validação física do sinal C na webcam.
     const hand = Array.from({ length: 21 }, () => ({ x: .5, y: .8, z: 0 }));
     hand[0] = { x: .5, y: .9, z: 0 };
     for (const [mcp, pip, tip, x] of [[5, 6, 8, .38], [9, 10, 12, .46],
@@ -1402,7 +1417,7 @@ test('fixtures sintéticas K, P e C preservam candidata e confirmação única',
       hand[pip] = { x, y: .42, z: 0 };
       hand[tip] = { x: x + (mcp === 5 ? -.2 : .2), y: .42, z: 0 };
     }
-    hand[4] = { x: .66, y: .42, z: 0 };
+    hand[4] = { x: .90, y: .42, z: 0 };
     return hand;
   };
   for (const [letter, hand] of [['K', twoFingers(false)], ['P', twoFingers(true)], ['C', curved()]]) {
@@ -1415,6 +1430,48 @@ test('fixtures sintéticas K, P e C preservam candidata e confirmação única',
     }
     assert.deepEqual(signs, [letter]);
   }
+});
+
+test('S com indicador recolhido não confirma T durante a sustentação', async () => {
+  const r = await browserRuntime();
+  const diag = r.window.librasArcadeDiagnostics;
+  const engine = new r.LibrasEngine();
+  const signs = [];
+  engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+  diag.startCalibration({ intendedLetter: 'S', physicalHand: 'right',
+    orientation: 'front', distance: 'medium', mirrored: false });
+  for (let at = 100; at <= 1000; at += 50) {
+    const state = engine.update({ landmarks: [stPose(false)] }, at, 20);
+    assert.ok(state.features.extIndex >= -.12 && state.features.extIndex <= -.06,
+      'extensão do indicador na faixa relatada para S');
+    assert.equal(state.letter, 'S');
+  }
+  assert.deepEqual(signs, ['S']);
+  const sample = diag.read().events.find((event) => event.type === 'recognition');
+  assert.equal(sample.scoreT, 0);
+  assert.ok(sample.scoreS >= .55);
+});
+
+test('T com indicador estendido mantém hold, cooldown e confirmação única', async () => {
+  const r = await browserRuntime();
+  const engine = new r.LibrasEngine();
+  const signs = [];
+  engine.addEventListener('signconfirmed', (event) => signs.push(event.detail.letter));
+  for (let at = 100; at <= 1650; at += 50) {
+    const state = engine.update({ landmarks: [stPose(true)] }, at, 20);
+    assert.ok(state.features.extIndex >= .87 && state.features.extIndex <= .92,
+      'extensão do indicador na faixa relatada para T');
+    assert.equal(state.letter, 'T');
+    if (at < 700) assert.deepEqual(signs, [], 'aguarda 600 ms de hold');
+  }
+  assert.deepEqual(signs, ['T'], 'pose mantida não duplica a confirmação');
+  assert.equal(engine.state.recognitionPhase, 'WAIT_RELEASE');
+  for (let at = 1700; at <= 2800; at += 50) {
+    const state = engine.update({ landmarks: [stPose(false)] }, at, 20);
+    assert.equal(state.letter, 'S');
+    if (at < 2600) assert.deepEqual(signs, ['T'], 'troca estável exige novo hold');
+  }
+  assert.deepEqual(signs, ['T', 'S'], 'troca após cooldown confirma só uma vez');
 });
 
 for (const letter of ['J', 'Z']) {
@@ -3346,7 +3403,7 @@ test('calibração E/M/R expõe concorrentes e escalares sem landmarks', async (
     orientation: 'oblique', distance: 'medium', mirrored: true });
   engine.update({ landmarks: [crossedRPose({ mirror: true })] }, 100, 20);
   const sample = diag.read().events.find((event) => event.type === 'recognition');
-  for (const field of ['scoreE', 'scoreM', 'scoreN', 'scoreR', 'scoreS', 'scoreU',
+  for (const field of ['scoreE', 'scoreH', 'scoreM', 'scoreN', 'scoreR', 'scoreS', 'scoreU', 'scoreX',
     'scoreA', 'scoreO', 'crossIM', 'crossOrderIM', 'crossDepthIM', 'palmAxisIM', 'thumbPinkyMcp',
     'thumbRingMcp', 'thumbIndexMcp', 'thumbMiddleMcp', 'thumbRingPinch',
     'tipPalmMean', 'thumbFingerDepth', 'tipDepthIM']) {
