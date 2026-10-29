@@ -39,6 +39,8 @@ As setas do diagrama representam fluxo/responsabilidade, não apenas imports. No
 
 Features usam distâncias 3D e ângulos 2D da imagem; escala mínima de `1e-4`. As 24 regras estáticas produzem média de escores fuzzy. O melhor escore ≥0,55 alimenta hold de 600 ms; perda breve tem graça de 250 ms. Não há margem de separação entre candidatos ou calibração probabilística. Esses parâmetros e regras não foram alterados na FASE 03.
 
+No laboratório de 29/10/2026, `RULES.T` conserva a média anterior, limitada por extensão do indicador entre `FINGER_EXT_ON` e `FINGER_EXT_ON + 0.30`. A captura rotulada expõe `scoreH` e `scoreX` como escalares autorizados; o anel continua com 120 eventos. [Escopo e limites](changes/2026-10-29-lab-st-c-frontal.md).
+
 Na 03.3B-2A, V mantém a média de seis componentes de forma e aplica um desconto de até 0,20 ao escore somente quando a direção projetada é descendente e o polegar está próximo da região entre indicador/médio. K e P mantêm as regras anteriores. A/O continuam com possibilidade de empate em 1,00. O desconto é uma hipótese validada em fixtures, sem calibração de webcam. Não depende da letra alvo nem da mão física declarada.
 
 Na 03.3B-2A.1, A mantém a média dos cinco componentes anteriores e recebe uma redução de até um sexto quando há pinça polegar–ponta do médio. A faixa é a mesma já empregada em O (`PINCH_ON` a `PINCH_ON + 0.25`); com polegar separado, A conserva exatamente o escore anterior. O e P/V/K não mudam. A análise de escalares reais motivou a decisão, mas a eficácia posterior em webcam e A lateral verdadeiro permanecem pendentes.

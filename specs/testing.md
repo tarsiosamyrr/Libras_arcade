@@ -1,5 +1,11 @@
 # Verificações e evidências
 
+## Laboratório S/T e C frontal — 29/10/2026
+
+O teste S/T com landmarks sintéticos falhou antes do gate porque a pose S tinha T como candidata; após limitar apenas `RULES.T` pela extensão do indicador, S confirmou S e T estendido confirmou T. A sequência T→S manteve hold, cooldown e uma confirmação por pose. A calibração falhou inicialmente pela ausência de `scoreH`; depois registrou `scoreH` e `scoreX` finitos, sem landmarks. O conjunto e os limites de eventos continuam os existentes.
+
+`node --check js/libras.js`, `npm.cmd test` (**209/209**), `npm.cmd run test:camera` (**196/196**), `npm.cmd run test:performance` (**13/13**) e `git diff --check` passaram. A suíte de performance verifica contratos lógicos; não mede FPS, CPU ou memória nesta entrega. O C frontal foi apenas diagnosticado: faltam escores pareados e controles físicos positivos H/X para uma correção segura. [Decisão e protocolo](changes/2026-10-29-lab-st-c-frontal.md).
+
 ## Correção conjunta V/K — FASE 03.3B-2D.4
 
 O [relatório](../docs/qa/Libras_Arcade_Correcao_VK_033B2D4_2026-10-27.md) confronta seis capturas reais com as regras, incluindo a perda dos frames pré-confirmação de K esquerda no anel de 120. Antes da mudança, `classify()` reproduziu 146/146 frames com mão. O replay dos dois controles `four_spread` desloca V/K para U, que fica abaixo da elegibilidade nos frames estáveis; um W transitório não confirma. V nas duas mãos e K direita mantêm as 33 candidaturas pré-confirmação e os três instantes visíveis de confirmação. O teste geométrico novo falhou antes dos gates por aceitar anelar/mínimo abertos e passou depois; três testes de integração cobrem controle negativo, Treino/Soletrar e rearmamento. Uma fixture frontal ainda confirma U como sucessora, portanto não há aprovação geral nem homologação pós-patch.

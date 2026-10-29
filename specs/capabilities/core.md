@@ -65,6 +65,8 @@ Na 03.3B-2D.2, a rodada física posterior confirmou B unido primeiro à direita,
 
 Na 03.3B-2D.4, duas capturas V e uma K com frames pré-confirmação preservados confirmaram a letra pretendida; uma quarta K, esquerda, confirmou segundo o resumo, mas perdeu os frames iniciais no buffer. Dois controles `four_spread` confirmaram V falsamente. Gates conjuntos de fechamento para V/K e proximidade do polegar para K eliminam V/K nesses controles no replay e preservam as três confirmações visíveis. Uma fixture sintética de quatro dedos abertos, vista mais frontalmente, ainda confirma U; a capacidade permanece `partial` e V/K não estão homologadas após o patch. [Resultados e nova coleta](../../docs/qa/Libras_Arcade_Correcao_VK_033B2D4_2026-10-27.md).
 
+No laboratório S/T, somente T passou a exigir indicador estendido como fator obrigatório; S e o estado temporal permaneceram. As fixtures sintéticas distinguem S de T e preservam hold, cooldown e confirmação única. O C frontal ainda falha ou oscila nas capturas relatadas; a calibração agora expõe `scoreH` e `scoreX` para investigar essa concorrência sem mudar C, H ou X. A capacidade segue `partial` até novos controles físicos e [validação independente](../changes/2026-10-29-lab-st-c-frontal.md).
+
 ## Evidências de implementação e teste
 
 Implementação: [Game](../../js/game.js), [ForcaGame](../../js/forca.js), [LibrasEngine](../../js/libras.js) e [UI](../../js/ui.js). A inspeção incluiu todos os módulos da raiz e seus dados. Comandos, cenários reproduzidos e limitações estão em [testing.md](../testing.md). `last_verified` representa inspeção do estado, não homologação do reconhecimento.

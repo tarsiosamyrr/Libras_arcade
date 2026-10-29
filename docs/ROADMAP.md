@@ -1,5 +1,9 @@
 # FASE 00 — Auditoria e roteiro técnico
 
+## Laboratório S/T e C frontal — 29/10/2026
+
+O gate de extensão do indicador em T passou nas regressões sintéticas S/T e preservou a máquina temporal. A webcam ainda precisa confirmar S e T verdadeiros nas duas mãos e nos três jogos. O C frontal permanece instável nos relatos recebidos; `scoreH` e `scoreX` passaram à calibração voluntária para comparar a concorrência por frame. Coletar C/H/X positivos independentes, frontal e lateral, antes de ajustar qualquer regra. [Decisão e protocolo](../specs/changes/2026-10-29-lab-st-c-frontal.md).
+
 **Atualização até a FASE 02.1:** FPS corrigido, loop/Canvas otimizados e comparação controlada da FASE 01 executada ([relatório](performance/FASE01.md)). O ciclo de câmera, modelo e sessões da FASE 02 está no commit `fb22e89`. A FASE 02.1 trata falhas de armazenamento e a melhor sequência herdada, com testes sintéticos. As tabelas abaixo preservam o diagnóstico histórico da FASE 00.
 
 **Data:** 20/10/2026. **Branch:** `teste-ariel-versao-python`.

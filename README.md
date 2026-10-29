@@ -80,6 +80,8 @@ Na FASE 03.3B-2A.1, A recebe apenas um desconto quando a ponta do polegar se apr
 
 A configuração atual detecta **uma mão** (`numHands: 1`), atribui a primeira detecção ao papel lógico `right` e mantém `REQUIRE_LEFT_HAND: false`. Não identifica lateralidade nesse caminho. O painel de duas mãos é um resquício de outra configuração; ativar só a flag da esquerda impediria confirmações.
 
+Nesta versão de laboratório, C/O e T têm ajustes experimentais. As capturas relatadas confirmaram C lateral e O frontal/lateral nas duas mãos, mas C frontal ainda falhou ou oscilou. S/T passou nas regressões sintéticas após o ajuste de T e aguarda validação física; H/X receberam apenas escores diagnósticos. Y/E de outra implementação não foram integradas. O [checklist de demonstração](docs/qa/Libras_Arcade_Preparacao_Demo_2026-10-29.md) separa o que os testes verificam do que ainda exige webcam.
+
 As 90 palavras cadastradas têm dicas e usam letras da cobertura nominal. A dificuldade das palavras não é filtrada pela dificuldade individual das letras; Soletrar/Forca não têm exatamente o mesmo conjunto por nível que Treino.
 
 ## Arquitetura e estrutura
@@ -198,7 +200,7 @@ Falhas de permissão, câmera ausente ou ocupada e erros de inferência mostram 
 
 ## Testes e validação
 
-Os testes focados das FASES 01 a 03.2 usam o runner nativo do Node. A suíte da FASE 03.2 cobre diagnóstico e decisões do Soletrar no harness existente; contagem e resultados executados estão em [specs/testing.md](specs/testing.md). A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
+As suítes atuais usam o runner nativo do Node e cobrem motores, UI, câmera simulada, reconhecimento e contratos de performance. Contagens e resultados executados estão em [specs/testing.md](specs/testing.md). A versão mais antiga efetivamente verificada é **Node.js 24.18.0**; versões anteriores não foram testadas nesta integração. Execute na raiz:
 
 ```powershell
 npm.cmd test
@@ -209,10 +211,9 @@ npm.cmd run test:camera
 Sem npm, os comandos equivalentes são:
 
 ```powershell
-node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs tests/app-ui.integration.test.cjs
+node --experimental-vm-modules --test tests/performance.test.cjs tests/phase02.test.mjs tests/app-ui.integration.test.cjs tests/vk-gates.test.cjs
 node --experimental-vm-modules --test tests/performance.test.cjs
-node --test tests/phase02.test.mjs
-node --experimental-vm-modules --test tests/app-ui.integration.test.cjs
+node --experimental-vm-modules --test tests/phase02.test.mjs tests/app-ui.integration.test.cjs tests/vk-gates.test.cjs
 ```
 
 `tests/performance.test.cjs` e a integração de `tests/app-ui.integration.test.cjs` usam `vm.SyntheticModule`/`vm.SourceTextModule`, indisponíveis no Node 24.18.0 sem `--experimental-vm-modules`; por isso `test` e `test:camera` incluem a flag. O harness testa módulos reais com DOM, relógio, câmera e MediaPipe simulados; não comprova compatibilidade de navegador, webcam física, permissões do sistema ou execução real de GPU/WASM. Houve relatos manuais com webcam, mas a FASE 03.1 não executou um protocolo controlado de precisão ou desempenho real. Os scripts de navegador usam Playwright disponível no ambiente; não há instalação automática, CI, lint, typecheck ou build. Comandos, resultados e limites estão em [specs/testing.md](specs/testing.md).

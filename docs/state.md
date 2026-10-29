@@ -1,5 +1,9 @@
 # Estado da entrega
 
+- Preparação do candidato de demonstração: auditoria rápida dos fluxos, instruções de teste do README alinhadas ao `package.json` e [checklist com pendências](qa/Libras_Arcade_Preparacao_Demo_2026-10-29.md). Foi relatado smoke test físico de 9/9 cenários, ainda sem matriz de cenários ou registro de ambiente neste repositório. O destino autorizado para integração local é `teste-ariel-versao-python`; permanecem pendentes a conferência do roteiro no dispositivo da apresentação e a validação específica de S/T e C frontal.
+
+- Laboratório `lab-competicao-gestos-v2`, 29/10/2026: gate local de indicador em T e calibração escalar `scoreH`/`scoreX`; S/T sintéticos e comandos obrigatórios passaram (209/209 gerais, 196/196 câmera simulada, 13/13 performance lógica). C frontal permanece pendente de capturas pareadas C/H/X; nenhuma regra C/H/X foi alterada nesta etapa. Patches anteriores e arquivos não rastreados foram preservados na preparação; nenhum push foi feito. [Decisão e próxima coleta](../specs/changes/2026-10-29-lab-st-c-frontal.md).
+
 - FASE 00 concluída: arquitetura e diagnóstico documentados; equivalência estrutural, dados, sintaxe, HTTP local e documentação verificados. Sem alteração funcional.
 - A pasta não rastreada `Libras_arcade/` é preexistente e foi preservada.
 - FASE 01 implementada e verificada automaticamente: métricas reais de inferência/FPS, loop único, Canvas, 13 testes e integração de navegador. [Relatório, diff resumido e evidências](performance/FASE01.md).
