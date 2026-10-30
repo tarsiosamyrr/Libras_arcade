@@ -80,7 +80,7 @@ Na FASE 03.3B-2A.1, A recebe apenas um desconto quando a ponta do polegar se apr
 
 A configuração atual detecta **uma mão** (`numHands: 1`), atribui a primeira detecção ao papel lógico `right` e mantém `REQUIRE_LEFT_HAND: false`. Não identifica lateralidade nesse caminho. O painel de duas mãos é um resquício de outra configuração; ativar só a flag da esquerda impediria confirmações.
 
-Nesta versão de laboratório, C/O e T têm ajustes experimentais. As capturas relatadas confirmaram C lateral e O frontal/lateral nas duas mãos, mas C frontal ainda falhou ou oscilou. S/T passou nas regressões sintéticas após o ajuste de T e aguarda validação física; H/X receberam apenas escores diagnósticos. Y/E de outra implementação não foram integradas. O [checklist de demonstração](docs/qa/Libras_Arcade_Preparacao_Demo_2026-10-29.md) separa o que os testes verificam do que ainda exige webcam.
+Nesta versão de laboratório, C/O e T têm ajustes experimentais. A rodada física informada aprovou S e T nas duas mãos, C/O laterais nas duas mãos e A direita, sem estabelecer cobertura de outras orientações ou condições. C frontal ainda falhou ou oscilou; H/X receberam apenas escores diagnósticos. Y/E de outra implementação não foram integradas. O [checklist de demonstração](docs/qa/Libras_Arcade_Preparacao_Demo_2026-10-29.md) registra os resultados e o microtravamento ainda sem causa determinada.
 
 As 90 palavras cadastradas têm dicas e usam letras da cobertura nominal. A dificuldade das palavras não é filtrada pela dificuldade individual das letras; Soletrar/Forca não têm exatamente o mesmo conjunto por nível que Treino.
 
